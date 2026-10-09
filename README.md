@@ -1,32 +1,12 @@
-# ATLAS Analytics
+# ATLAS Analytics — kostenlose globale Kursversion
 
-Ein kleines Dashboard zur Analyse echter historischer Börsendaten.
+## Bereitstellung
+1. Lade `app.py` und `requirements.txt` in dein GitHub-Repository `atlas-analytics` hoch und ersetze vorhandene Dateien.
+2. In Streamlit Community Cloud wähle dieses Repository, Branch `main` und Main file path `app.py`.
+3. Deploy oder Reboot der App.
 
-## Enthaltene Funktionen
-- Historische tägliche Kursdaten über Alpha Vantage
-- Kursdiagramm mit gleitenden Durchschnitten (SMA 20/50)
-- RSI (14 Tage)
-- Annualisierte historische Volatilität
-- Maximaler Drawdown
-- CSV-Export
+## Daten
+Diese Version nutzt `yfinance` als kostenlose, inoffizielle Schnittstelle zu Yahoo Finance. Verfügbarkeit, Symbole und Nutzungsbedingungen können sich ändern; Daten können verzögert/unvollständig sein. Keine API-Key-Eingabe ist nötig.
 
-## Starten (Windows / macOS / Linux)
-1. Python 3.10 oder neuer installieren.
-2. Terminal im Projektordner öffnen.
-3. Abhängigkeiten installieren:
-   `python -m pip install -r requirements.txt`
-4. Dashboard starten:
-   `streamlit run app.py`
-5. Browser-Adresse öffnen, die im Terminal angezeigt wird.
-
-## API-Key
-Im Dashboard links den Alpha-Vantage-Key eintragen. Du kannst alternativ vor dem Start eine Umgebungsvariable `ALPHA_VANTAGE_API_KEY` setzen.
-
-Offizielle Seite:
-https://www.alphavantage.co/support/#api-key
-
-## Hinweise
-- Das Programm nutzt tägliche historische Daten; es ist kein garantiertes Echtzeit-Feed.
-- Gratis-Tarife haben Nutzungsgrenzen. Prüfe Anbieterbedingungen, Symbolabdeckung und Datenlizenz.
-- API-Key nicht veröffentlichen oder in Dateien einchecken.
-- Kennzahlen sind historische Messungen und keine Vorhersagen oder Anlageberatung.
+## Grenzen
+Dies ist eine kuratierte Auswahl internationaler Aktien, keine vollständige Weltbörsenabdeckung. Das Ranking nutzt historische Kursentwicklung, Trend, Volatilität und Drawdown. Es bewertet keine Fundamentaldaten wie Umsatz-/Gewinnwachstum und ist keine Anlageberatung.

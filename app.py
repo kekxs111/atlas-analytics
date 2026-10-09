@@ -1,143 +1,160 @@
-import os
-from datetime import datetime
-import requests
-import pandas as pd
 import streamlit as st
-import plotly.graph_objects as go
+import pandas as pd
+import numpy as np
+import yfinance as yf
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="ATLAS Analytics", page_icon="📈", layout="wide")
-
-st.markdown("""
-<style>
-.stApp { background: #0b1220; color: #e7eef8; }
-[data-testid="stMetric"] { background: #142238; padding: 16px; border-radius: 12px; }
-div[data-testid="stDataFrame"] { border-radius: 12px; }
-</style>
-""", unsafe_allow_html=True)
-
 st.title("📈 ATLAS Analytics")
-st.caption("Marktdaten · Portfolio-Analyse · Risikoindikatoren")
-st.info("Bildungs- und Analysewerkzeug. Daten können verzögert sein. Keine Anlageberatung.")
+st.caption("Globaler Aktien-Scanner · 12-Monats-Horizont · Wachstum mit Risikokontrolle")
+st.warning("Hinweis: Kostenlose Yahoo-Finance-Daten können verzögert, unvollständig oder zeitweise nicht verfügbar sein. Das Ranking ist eine historische Kennzahlen-Auswertung, keine Kaufempfehlung.")
+
+# Broad, curated cross-market universe; symbols use Yahoo Finance conventions.
+UNIVERSE = {
+    "USA": ["AAPL","MSFT","NVDA","AMZN","GOOGL","META","AVGO","ORCL","CRM","AMD","LLY","V","MA","COST","NFLX","ADBE","QCOM","TXN","INTU","NOW","PANW","UBER","CAT","GE","JPM"],
+    "Europa": ["ASML.AS","SAP.DE","SIE.DE","ALV.DE","DTE.DE","AIR.PA","MC.PA","OR.PA","SU.PA","SAN.PA","RMS.PA","AZN.L","SHEL.L","REL.L","RR.L","NOVO-B.CO","DSV.CO","NOKIA.HE","NESN.SW","ROG.SW","UBSG.SW","ABI.BR","ADYEN.AS","PRX.AS","IBE.MC"],
+    "Asien": ["7203.T","6758.T","9984.T","7974.T","6861.T","6501.T","8035.T","005930.KS","000660.KS","005380.KS","0700.HK","9988.HK","3690.HK","9618.HK","2318.HK","1211.HK","RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","603259.SS","600519.SS","300750.SZ","601318.SS"]
+}
+
+@st.cache_data(ttl=900, show_spinner=False)
+def fetch_data(symbols):
+    # Pull roughly 1 year plus buffer for moving averages
+    raw = yf.download(
+        tickers=symbols,
+        period="2y",
+        interval="1d",
+        auto_adjust=True,
+        group_by="ticker",
+        progress=False,
+        threads=True
+    )
+    closes = {}
+    for symbol in symbols:
+        try:
+            if isinstance(raw.columns, pd.MultiIndex):
+                series = raw[(symbol, "Close")].dropna()
+            else:
+                series = raw["Close"].dropna()
+            if len(series) >= 130:
+                closes[symbol] = series
+        except Exception:
+            continue
+    return pd.DataFrame(closes).sort_index()
+
+def max_drawdown(prices):
+    peak = prices.cummax()
+    dd = prices / peak - 1
+    return float(dd.min())
 
 with st.sidebar:
     st.header("Einstellungen")
-    api_key = st.text_input("Alpha Vantage API-Key", value=os.getenv("ALPHA_VANTAGE_API_KEY", ""), type="password")
-    symbol = st.text_input("Ticker-Symbol", value="IBM").strip().upper()
-    period = st.selectbox("Zeitraum", ["6 Monate", "1 Jahr", "2 Jahre", "5 Jahre"], index=1)
-    st.caption("Beispiele: IBM, AAPL, MSFT, NVDA, SAP.DE (Verfügbarkeit abhängig vom Anbieter).")
-    load = st.button("Kurse laden", type="primary", use_container_width=True)
+    markets = st.multiselect("Märkte", list(UNIVERSE.keys()), default=list(UNIVERSE.keys()))
+    max_results = st.slider("Anzahl angezeigter Aktien", 5, 30, 15)
+    refresh = st.button("Daten neu laden")
+    if refresh:
+        st.cache_data.clear()
 
-period_map = {"6 Monate": 126, "1 Jahr": 252, "2 Jahre": 504, "5 Jahre": 1260}
+symbols = []
+for market in markets:
+    symbols.extend(UNIVERSE[market])
+symbols = list(dict.fromkeys(symbols))
 
-@st.cache_data(ttl=900, show_spinner=False)
-def fetch_daily(sym, key):
-    url = "https://www.alphavantage.co/query"
-    params = {
-        "function": "TIME_SERIES_DAILY_ADJUSTED",
-        "symbol": sym,
-        "outputsize": "full",
-        "apikey": key,
-    }
-    response = requests.get(url, params=params, timeout=30)
-    response.raise_for_status()
-    payload = response.json()
-    series_key = "Time Series (Daily)"
-    if series_key not in payload:
-        message = payload.get("Note") or payload.get("Information") or payload.get("Error Message") or str(payload)
-        raise ValueError(message)
-    df = pd.DataFrame.from_dict(payload[series_key], orient="index")
-    df.index = pd.to_datetime(df.index)
-    df = df.sort_index()
-    df = df.rename(columns={
-        "1. open": "Open", "2. high": "High", "3. low": "Low",
-        "4. close": "Close", "5. adjusted close": "Adjusted Close",
-        "6. volume": "Volume"
-    })
-    for col in ["Open", "High", "Low", "Close", "Adjusted Close", "Volume"]:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-    return df
+if not symbols:
+    st.info("Bitte mindestens einen Markt auswählen.")
+    st.stop()
 
-def add_indicators(df):
-    df = df.copy()
-    price = df["Adjusted Close"] if "Adjusted Close" in df.columns else df["Close"]
-    df["Price"] = price
-    df["SMA20"] = price.rolling(20).mean()
-    df["SMA50"] = price.rolling(50).mean()
-    delta = price.diff()
-    gain = delta.clip(lower=0).rolling(14).mean()
-    loss = -delta.clip(upper=0).rolling(14).mean()
-    rs = gain / loss.replace(0, float("nan"))
-    df["RSI14"] = 100 - (100 / (1 + rs))
-    df["Daily Return"] = price.pct_change()
-    return df
-
-if not api_key:
-    st.markdown("### Starte mit echten historischen Börsendaten")
-    st.write("1. Besorge dir einen API-Key beim Datenanbieter.\n2. Trage ihn links ein.\n3. Gib ein Börsensymbol ein und klicke auf **Kurse laden**.")
-    st.markdown("[Alpha Vantage: API-Key und Dokumentation](https://www.alphavantage.co/support/#api-key)")
-    st.warning("Der kostenlose Tarif hat Anfragegrenzen und US-Echtzeitdaten sind nicht automatisch kostenlos. Prüfe die aktuellen Tarif- und Nutzungsbedingungen.")
-elif load:
+with st.spinner(f"Lade historische Tageskurse für bis zu {len(symbols)} Aktien …"):
     try:
-        with st.spinner(f"Lade Marktdaten für {symbol} …"):
-            raw = fetch_daily(symbol, api_key)
-            df = add_indicators(raw).tail(period_map[period]).dropna(subset=["Price"])
-        if df.empty:
-            st.error("Keine Kursdaten erhalten. Prüfe das Symbol und die Verfügbarkeit beim Datenanbieter.")
-            st.stop()
+        prices = fetch_data(tuple(symbols))
+    except Exception as exc:
+        st.error("Die kostenlose Datenquelle ist gerade nicht erreichbar. Bitte später erneut versuchen.")
+        st.caption(f"Technischer Hinweis: {type(exc).__name__}")
+        st.stop()
 
-        latest = df.iloc[-1]
-        previous = df.iloc[-2] if len(df) > 1 else latest
-        price_change = (latest["Price"] / previous["Price"] - 1) * 100 if previous["Price"] else 0
-        returns = df["Daily Return"].dropna()
-        total_return = (df["Price"].iloc[-1] / df["Price"].iloc[0] - 1) * 100
-        volatility = returns.std() * (252 ** 0.5) * 100 if len(returns) > 1 else 0
-        running_max = df["Price"].cummax()
-        drawdown = (df["Price"] / running_max - 1) * 100
-        max_drawdown = drawdown.min()
+if prices.empty:
+    st.error("Es wurden keine Kursdaten empfangen. Prüfe die Internetverbindung oder versuche es später erneut.")
+    st.stop()
 
-        st.caption(f"Symbol: {symbol} · Letzter verfügbarer Handelstag: {df.index[-1].date()} · Abruf: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Letzter Schlusskurs", f"{latest['Price']:.2f}", f"{price_change:+.2f}% zum Vortag")
-        c2.metric(f"Rendite · {period}", f"{total_return:+.2f}%")
-        c3.metric("Annualisierte Volatilität", f"{volatility:.2f}%")
-        c4.metric("Max. Drawdown", f"{max_drawdown:.2f}%")
+rows = []
+for ticker in prices.columns:
+    s = prices[ticker].dropna()
+    if len(s) < 130:
+        continue
+    last = float(s.iloc[-1])
+    one_year_ago = s.iloc[-min(252, len(s))]
+    six_month_ago = s.iloc[-min(126, len(s))]
+    ret_1y = last / float(one_year_ago) - 1
+    ret_6m = last / float(six_month_ago) - 1
+    daily = s.pct_change().dropna()
+    vol = float(daily.tail(252).std() * np.sqrt(252))
+    dd = max_drawdown(s.tail(252))
+    sma50 = float(s.tail(50).mean())
+    sma200 = float(s.tail(200).mean()) if len(s) >= 200 else np.nan
+    trend = 1 if last > sma50 else 0
+    trend_long = 1 if pd.notna(sma200) and last > sma200 else 0
+    # Transparent score: momentum/trend balanced against volatility and drawdown.
+    # Clamp component scores to avoid a single extreme return dominating the list.
+    momentum_score = np.clip((ret_1y + 0.20) / 0.70, 0, 1) * 25
+    sixm_score = np.clip((ret_6m + 0.10) / 0.40, 0, 1) * 15
+    trend_score = (trend * 5) + (trend_long * 5)
+    vol_score = np.clip(1 - (vol / 0.65), 0, 1) * 20
+    dd_score = np.clip(1 - (abs(dd) / 0.60), 0, 1) * 20
+    penalty = 10 if ret_1y < 0 else 0
+    score = float(np.clip(momentum_score + sixm_score + trend_score + vol_score + dd_score - penalty, 0, 100))
+    risk = "Hoch" if vol >= 0.45 or dd <= -0.40 else ("Mittel" if vol >= 0.28 or dd <= -0.25 else "Niedrig")
+    reasons = []
+    reasons.append("positiver 1J-Trend" if ret_1y > 0 else "negative 1J-Rendite")
+    reasons.append("Kurs über 50-Tage-Linie" if trend else "Kurs unter 50-Tage-Linie")
+    if vol >= .45 or dd <= -.40:
+        reasons.append("hohe Schwankung/Rückgang")
+    elif vol < .28 and dd > -.25:
+        reasons.append("historisch moderateres Risiko")
+    else:
+        reasons.append("mittleres historisches Risiko")
+    market = next((m for m, ts in UNIVERSE.items() if ticker in ts), "Andere")
+    rows.append({
+        "Rang": 0, "Aktie": ticker, "Markt": market, "Score / 100": round(score, 1),
+        "1J Rendite": ret_1y, "6M Rendite": ret_6m, "Volatilität": vol,
+        "Max. Rückgang": dd, "Risiko": risk, "Bewertungsgrund": "; ".join(reasons),
+        "Letzter Kurs": last, "Kursdatum": s.index[-1].date().isoformat()
+    })
 
-        st.subheader("Kursverlauf")
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df.index, y=df["Price"], name="Kurs", line=dict(width=2)))
-        fig.add_trace(go.Scatter(x=df.index, y=df["SMA20"], name="SMA 20", line=dict(width=1.5)))
-        fig.add_trace(go.Scatter(x=df.index, y=df["SMA50"], name="SMA 50", line=dict(width=1.5)))
-        fig.update_layout(template="plotly_dark", height=470, margin=dict(l=10,r=10,t=30,b=10), hovermode="x unified")
-        st.plotly_chart(fig, use_container_width=True)
+if not rows:
+    st.error("Für die ausgewählten Aktien liegen nicht genügend Kursdaten vor.")
+    st.stop()
 
-        left, right = st.columns(2)
-        with left:
-            st.subheader("RSI (14 Tage)")
-            rsi_fig = go.Figure()
-            rsi_fig.add_trace(go.Scatter(x=df.index, y=df["RSI14"], name="RSI 14"))
-            rsi_fig.add_hline(y=70, line_dash="dash")
-            rsi_fig.add_hline(y=30, line_dash="dash")
-            rsi_fig.update_layout(template="plotly_dark", height=300, yaxis_range=[0,100], margin=dict(l=10,r=10,t=20,b=10))
-            st.plotly_chart(rsi_fig, use_container_width=True)
-        with right:
-            st.subheader("Drawdown")
-            dd_fig = go.Figure()
-            dd_fig.add_trace(go.Scatter(x=df.index, y=drawdown, fill="tozeroy", name="Drawdown"))
-            dd_fig.update_layout(template="plotly_dark", height=300, margin=dict(l=10,r=10,t=20,b=10), yaxis_title="%")
-            st.plotly_chart(dd_fig, use_container_width=True)
+result = pd.DataFrame(rows).sort_values(["Score / 100", "1J Rendite"], ascending=False).reset_index(drop=True)
+result["Rang"] = np.arange(1, len(result) + 1)
+st.subheader("Automatisch sortierte Rangliste")
+st.caption(f"{len(result)} Aktien mit verfügbaren Daten · Letztes Kursdatum in der Tabelle · Aktualisierung höchstens alle 15 Minuten")
+view = result.head(max_results).copy()
+for col in ["1J Rendite", "6M Rendite", "Volatilität", "Max. Rückgang"]:
+    view[col] = view[col].map(lambda x: f"{x:.1%}")
+view["Letzter Kurs"] = view["Letzter Kurs"].map(lambda x: f"{x:,.2f}")
+st.dataframe(view, use_container_width=True, hide_index=True)
 
-        st.subheader("Letzte Handelstage")
-        display_cols = [c for c in ["Open", "High", "Low", "Close", "Adjusted Close", "Volume", "SMA20", "SMA50", "RSI14"] if c in df.columns]
-        st.dataframe(df[display_cols].sort_index(ascending=False).head(20).round(3), use_container_width=True)
+selected = st.selectbox("Aktie genauer ansehen", result["Aktie"].tolist())
+series = prices[selected].dropna()
+st.subheader(f"{selected} · Kursverlauf")
+st.line_chart(series.tail(252))
+row = result[result["Aktie"] == selected].iloc[0]
+c1,c2,c3,c4 = st.columns(4)
+c1.metric("1-Jahres-Rendite", f"{row['1J Rendite']:.1%}")
+c2.metric("Volatilität (annualisiert)", f"{row['Volatilität']:.1%}")
+c3.metric("Max. Rückgang", f"{row['Max. Rückgang']:.1%}")
+c4.metric("Risiko", row["Risiko"])
+st.write("**Bewertungsgrund:**", row["Bewertungsgrund"])
+st.write("**Kursdatum:**", row["Kursdatum"])
+st.download_button("Rangliste als CSV herunterladen", result.to_csv(index=False).encode("utf-8-sig"), "atlas_rangliste.csv", "text/csv")
 
-        csv = df.to_csv().encode("utf-8")
-        st.download_button("Analyse-Daten als CSV herunterladen", csv, file_name=f"{symbol.lower()}_analysis.csv", mime="text/csv")
-        st.caption("SMA = gleitender Durchschnitt. RSI ist ein technischer Momentum-Indikator. Volatilität und Drawdown beruhen auf historischen Daten und sagen die Zukunft nicht zuverlässig voraus.")
-    except Exception as e:
-        st.error(f"Die Daten konnten nicht geladen werden: {e}")
-        st.write("Prüfe API-Key, Symbol, Internetverbindung und das Tageslimit des Datenanbieters.")
-else:
-    st.markdown("### Bereit zum Laden")
-    st.write(f"Ausgewähltes Symbol: **{symbol or '—'}**")
-    st.write("Klicke links auf **Kurse laden**, um historische Daten vom Anbieter abzurufen.")
+with st.expander("Wie wird der Score berechnet?"):
+    st.markdown("""
+    - 1-Jahres-Kursentwicklung: bis zu 25 Punkte
+    - 6-Monats-Kursentwicklung: bis zu 15 Punkte
+    - Kurs über 50- und 200-Tage-Durchschnitt: bis zu 10 Punkte
+    - Niedrigere historische Volatilität: bis zu 20 Punkte
+    - Geringerer maximaler Rückgang im letzten Jahr: bis zu 20 Punkte
+    - Abzug von 10 Punkten bei negativer 1-Jahres-Rendite
+
+    **Einschränkung:** Diese kostenlose Version nutzt historische Kurse als Wachstums-/Trend-Proxys. Sie enthält keine verlässliche vollständige weltweite Abdeckung und bewertet Umsatz- und Gewinnwachstum nicht. Die angezeigten Aktien sind eine kuratierte Auswahl, keine vollständige Suche über alle Börsen.
+    """)
