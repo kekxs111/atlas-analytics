@@ -3,69 +3,93 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import plotly.express as px
-from datetime import date, timedelta
 
 st.set_page_config(page_title="ATLAS Analytics", page_icon="📈", layout="wide")
-
 st.title("📈 ATLAS Analytics")
-st.caption("Internationaler Aktien-Scanner · Fokus auf Kursentwicklung und Risiko über etwa ein Jahr")
+st.caption("Aktien, ETFs und Rohstoffe · Kursentwicklung und historisches Risiko")
+
 st.warning(
-    "Hinweis: ATLAS ist ein Analyse- und Lernwerkzeug, keine Anlageberatung. "
-    "Kursdaten können verzögert sein oder vorübergehend fehlen. Vergangene Kursentwicklung "
-    "sagt die zukünftige Entwicklung nicht zuverlässig voraus."
+    "ATLAS ist ein Analyse- und Lernwerkzeug, keine Anlageberatung. "
+    "Marktdaten können verzögert sein oder fehlen. Vergangene Entwicklung sagt zukünftige Ergebnisse nicht zuverlässig voraus."
 )
 
-# Eine ausgewählte Aktienliste – keine vollständige Erfassung aller Börsen weltweit.
-MARKETS = {
-    "USA": {
-        "AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "NVIDIA", "AMZN": "Amazon",
-        "GOOGL": "Alphabet", "META": "Meta Platforms", "AVGO": "Broadcom",
-        "LLY": "Eli Lilly", "COST": "Costco", "NFLX": "Netflix", "AMD": "AMD",
-        "CRM": "Salesforce", "ORCL": "Oracle", "ADBE": "Adobe", "QCOM": "Qualcomm",
-        "JPM": "JPMorgan Chase", "V": "Visa", "MA": "Mastercard", "CAT": "Caterpillar",
-        "GE": "GE Aerospace", "UBER": "Uber", "PANW": "Palo Alto Networks",
-        "PLTR": "Palantir", "TSLA": "Tesla", "KO": "Coca-Cola",
+# Ausgewählte Wertpapiere/Marktindikatoren. Keine vollständige Abdeckung des Weltmarkts.
+UNIVERSE = {
+    "Aktien": {
+        "USA": {
+            "AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "NVIDIA", "AMZN": "Amazon",
+            "GOOGL": "Alphabet", "META": "Meta Platforms", "AVGO": "Broadcom",
+            "LLY": "Eli Lilly", "COST": "Costco", "NFLX": "Netflix", "AMD": "AMD",
+            "CRM": "Salesforce", "ORCL": "Oracle", "ADBE": "Adobe", "QCOM": "Qualcomm",
+            "JPM": "JPMorgan Chase", "V": "Visa", "MA": "Mastercard", "CAT": "Caterpillar",
+            "GE": "GE Aerospace", "UBER": "Uber", "PANW": "Palo Alto Networks",
+            "PLTR": "Palantir", "TSLA": "Tesla", "KO": "Coca-Cola",
+        },
+        "Europa": {
+            "ASML.AS": "ASML", "SAP.DE": "SAP", "SIE.DE": "Siemens",
+            "ALV.DE": "Allianz", "DTE.DE": "Deutsche Telekom", "AIR.PA": "Airbus",
+            "MC.PA": "LVMH", "OR.PA": "L'Oréal", "SU.PA": "Schneider Electric",
+            "SAN.PA": "Sanofi", "RMS.PA": "Hermès", "TTE.PA": "TotalEnergies",
+            "NESN.SW": "Nestlé", "NOVN.SW": "Novartis", "ROG.SW": "Roche",
+            "AZN.L": "AstraZeneca", "SHEL.L": "Shell", "HSBA.L": "HSBC",
+            "ULVR.L": "Unilever", "REL.L": "RELX", "BAS.DE": "BASF",
+            "BMW.DE": "BMW", "MBG.DE": "Mercedes-Benz", "IFX.DE": "Infineon",
+            "ENEL.MI": "Enel",
+        },
+        "Asien": {
+            "7203.T": "Toyota", "6758.T": "Sony", "9984.T": "SoftBank Group",
+            "6501.T": "Hitachi", "8035.T": "Tokyo Electron", "7974.T": "Nintendo",
+            "6861.T": "Keyence", "9432.T": "NTT", "8306.T": "Mitsubishi UFJ",
+            "9988.HK": "Alibaba", "0700.HK": "Tencent", "3690.HK": "Meituan",
+            "9618.HK": "JD.com", "1810.HK": "Xiaomi", "1211.HK": "BYD",
+            "0005.HK": "HSBC Holdings", "RELIANCE.NS": "Reliance Industries",
+            "TCS.NS": "Tata Consultancy Services", "INFY.NS": "Infosys",
+            "HDFCBANK.NS": "HDFC Bank", "ICICIBANK.NS": "ICICI Bank",
+            "005930.KS": "Samsung Electronics", "000660.KS": "SK Hynix",
+            "035420.KS": "NAVER", "9983.T": "Fast Retailing",
+        },
     },
-    "Europa": {
-        "ASML.AS": "ASML", "SAP.DE": "SAP", "SIE.DE": "Siemens",
-        "ALV.DE": "Allianz", "DTE.DE": "Deutsche Telekom", "AIR.PA": "Airbus",
-        "MC.PA": "LVMH", "OR.PA": "L'Oréal", "SU.PA": "Schneider Electric",
-        "SAN.PA": "Sanofi", "RMS.PA": "Hermès", "TTE.PA": "TotalEnergies",
-        "NESN.SW": "Nestlé", "NOVN.SW": "Novartis", "ROG.SW": "Roche",
-        "AZN.L": "AstraZeneca", "SHEL.L": "Shell", "HSBA.L": "HSBC",
-        "ULVR.L": "Unilever", "REL.L": "RELX", "BAS.DE": "BASF",
-        "BMW.DE": "BMW", "MBG.DE": "Mercedes-Benz", "IFX.DE": "Infineon",
-        "ENEL.MI": "Enel",
+    "ETFs": {
+        "Welt & Regionen": {
+            "VWCE.DE": "Vanguard FTSE All-World UCITS ETF",
+            "IWDA.AS": "iShares Core MSCI World UCITS ETF",
+            "EIMI.L": "iShares Core MSCI Emerging Markets IMI ETF",
+            "VUSA.AS": "Vanguard S&P 500 UCITS ETF",
+            "EXSA.DE": "iShares STOXX Europe 600 UCITS ETF",
+            "CSPX.L": "iShares Core S&P 500 UCITS ETF",
+            "QQQ": "Invesco QQQ (USA)",
+            "VT": "Vanguard Total World Stock ETF (USA)",
+            "VTI": "Vanguard Total Stock Market ETF (USA)",
+            "BND": "Vanguard Total Bond Market ETF (USA)",
+        },
     },
-    "Asien": {
-        "7203.T": "Toyota", "6758.T": "Sony", "9984.T": "SoftBank Group",
-        "6501.T": "Hitachi", "8035.T": "Tokyo Electron", "7974.T": "Nintendo",
-        "6861.T": "Keyence", "9432.T": "NTT", "8306.T": "Mitsubishi UFJ",
-        "9988.HK": "Alibaba", "0700.HK": "Tencent", "3690.HK": "Meituan",
-        "9618.HK": "JD.com", "1810.HK": "Xiaomi", "1211.HK": "BYD",
-        "0005.HK": "HSBC Holdings", "RELIANCE.NS": "Reliance Industries",
-        "TCS.NS": "Tata Consultancy Services", "INFY.NS": "Infosys",
-        "HDFCBANK.NS": "HDFC Bank", "ICICIBANK.NS": "ICICI Bank",
-        "005930.KS": "Samsung Electronics", "000660.KS": "SK Hynix",
-        "035420.KS": "NAVER", "9983.T": "Fast Retailing",
+    "Rohstoffe": {
+        "Rohstoff-Indikatoren": {
+            "GC=F": "Gold-Futures",
+            "SI=F": "Silber-Futures",
+            "CL=F": "WTI-Öl-Futures",
+            "BZ=F": "Brent-Öl-Futures",
+            "NG=F": "Erdgas-Futures",
+            "HG=F": "Kupfer-Futures",
+            "ZC=F": "Mais-Futures",
+            "ZW=F": "Weizen-Futures",
+        },
+        "Rohstoff-ETCs": {
+            "SGLD.L": "Invesco Physical Gold ETC",
+            "PHAG.L": "WisdomTree Physical Silver ETC",
+        },
     },
 }
 
 @st.cache_data(ttl=900, show_spinner=False)
 def download_history(tickers, period="2y"):
     raw = yf.download(
-        tickers=list(tickers),
-        period=period,
-        interval="1d",
-        auto_adjust=True,
-        progress=False,
-        group_by="column",
-        threads=True,
+        tickers=list(tickers), period=period, interval="1d",
+        auto_adjust=True, progress=False, group_by="column", threads=True,
     )
     if raw is None or raw.empty:
         return pd.DataFrame()
 
-    # Handle yfinance's different column layouts for one or multiple tickers.
     if isinstance(raw.columns, pd.MultiIndex):
         if "Close" in raw.columns.get_level_values(0):
             close = raw["Close"].copy()
@@ -83,8 +107,6 @@ def download_history(tickers, period="2y"):
         close = close.to_frame(name=list(tickers)[0])
 
     close.index = pd.to_datetime(close.index, errors="coerce")
-    # Daily market data is normally indexed by trading date. Remove timezone without
-    # shifting the calendar date, then sort chronologically.
     try:
         if close.index.tz is not None:
             close.index = close.index.tz_localize(None)
@@ -92,86 +114,67 @@ def download_history(tickers, period="2y"):
         pass
     close = close.loc[~close.index.isna()]
     close = close[~close.index.duplicated(keep="last")].sort_index()
-    close = close.apply(pd.to_numeric, errors="coerce")
-    return close.dropna(axis=1, how="all")
+    return close.apply(pd.to_numeric, errors="coerce").dropna(axis=1, how="all")
 
 
-def calc_metrics(prices):
+def calculate_metrics(prices):
     rows = []
-    if prices.empty:
-        return pd.DataFrame()
-
     for ticker in prices.columns:
-        series = prices[ticker].dropna().sort_index()
-        if len(series) < 60:
+        s = prices[ticker].dropna().sort_index()
+        if len(s) < 60:
             continue
-        last_date = series.index[-1]
-        last_price = float(series.iloc[-1])
+        last_date = s.index[-1]
         year_cutoff = last_date - pd.Timedelta(days=365)
         half_cutoff = last_date - pd.Timedelta(days=182)
-        year_series = series.loc[series.index >= year_cutoff]
-        half_series = series.loc[series.index >= half_cutoff]
-
-        if len(year_series) < 40:
+        year = s[s.index >= year_cutoff]
+        half = s[s.index >= half_cutoff]
+        if len(year) < 40:
             continue
 
-        one_year_return = (last_price / float(year_series.iloc[0]) - 1) * 100
-        six_month_return = (
-            (last_price / float(half_series.iloc[0]) - 1) * 100
-            if len(half_series) >= 20 else np.nan
-        )
+        last_price = float(s.iloc[-1])
+        ret1y = (last_price / float(year.iloc[0]) - 1) * 100
+        ret6m = (last_price / float(half.iloc[0]) - 1) * 100 if len(half) >= 20 else np.nan
+        daily = s.pct_change().dropna()
+        recent = daily[daily.index >= year_cutoff]
+        vol = float(recent.std() * np.sqrt(252) * 100) if len(recent) > 20 else np.nan
+        year_prices = s[s.index >= year_cutoff]
+        dd = (year_prices / year_prices.cummax() - 1) * 100
+        max_dd = float(dd.min()) if not dd.empty else np.nan
+        ma50 = float(s.tail(50).mean()) if len(s) >= 50 else np.nan
+        ma200 = float(s.tail(200).mean()) if len(s) >= 200 else np.nan
+        above50 = last_price > ma50 if pd.notna(ma50) else False
+        above200 = last_price > ma200 if pd.notna(ma200) else False
 
-        daily_returns = series.pct_change().dropna()
-        recent_returns = daily_returns.loc[daily_returns.index >= year_cutoff]
-        volatility = float(recent_returns.std() * np.sqrt(252) * 100) if len(recent_returns) > 20 else np.nan
-
-        year_prices = series.loc[series.index >= year_cutoff]
-        running_peak = year_prices.cummax()
-        drawdowns = (year_prices / running_peak - 1) * 100
-        max_drawdown = float(drawdowns.min()) if not drawdowns.empty else np.nan
-
-        ma50 = float(series.tail(50).mean()) if len(series) >= 50 else np.nan
-        ma200 = float(series.tail(200).mean()) if len(series) >= 200 else np.nan
-        above_ma50 = last_price > ma50 if pd.notna(ma50) else False
-        above_ma200 = last_price > ma200 if pd.notna(ma200) else False
-
-        # Transparent screening score, not a prediction or recommendation.
-        score = 0.0
-        score += np.clip(one_year_return, -50, 50) * 0.5
-        if pd.notna(six_month_return):
-            score += np.clip(six_month_return, -40, 40) * 0.25
-        score += 8 if above_ma50 else 0
-        score += 8 if above_ma200 else 0
-        if pd.notna(volatility):
-            score += max(0, 20 - volatility * 0.25)
-        if pd.notna(max_drawdown):
-            score += max(0, 20 + max_drawdown * 0.35)
-        if one_year_return < 0:
+        score = np.clip(ret1y, -50, 50) * 0.5
+        if pd.notna(ret6m):
+            score += np.clip(ret6m, -40, 40) * 0.25
+        score += 8 if above50 else 0
+        score += 8 if above200 else 0
+        if pd.notna(vol):
+            score += max(0, 20 - vol * 0.25)
+        if pd.notna(max_dd):
+            score += max(0, 20 + max_dd * 0.35)
+        if ret1y < 0:
             score -= 10
 
-        if pd.isna(volatility) or pd.isna(max_drawdown):
+        if pd.isna(vol) or pd.isna(max_dd):
             risk = "Nicht ausreichend"
-        elif volatility >= 45 or max_drawdown <= -40:
+        elif vol >= 45 or max_dd <= -40:
             risk = "Hoch"
-        elif volatility >= 28 or max_drawdown <= -25:
+        elif vol >= 28 or max_dd <= -25:
             risk = "Mittel"
         else:
             risk = "Niedriger"
 
         rows.append({
-            "Ticker": ticker,
-            "Letzter Kurs": last_price,
-            "Kursdatum": pd.Timestamp(last_date).strftime("%d.%m.%Y"),
-            "1J Rendite (%)": one_year_return,
-            "6M Rendite (%)": six_month_return,
-            "Volatilität 1J (%)": volatility,
-            "Max. Rückgang 1J (%)": max_drawdown,
-            "Über 50-Tage-Linie": "Ja" if above_ma50 else "Nein",
-            "Über 200-Tage-Linie": "Ja" if above_ma200 else "Nein",
-            "Risiko": risk,
-            "Score": score,
+            "Ticker": ticker, "Letzter Kurs": last_price,
+            "Kursdatum": last_date.strftime("%d.%m.%Y"),
+            "1J Rendite (%)": ret1y, "6M Rendite (%)": ret6m,
+            "Volatilität 1J (%)": vol, "Max. Rückgang 1J (%)": max_dd,
+            "Trend 50 Tage": "Ja" if above50 else "Nein",
+            "Trend 200 Tage": "Ja" if above200 else "Nein",
+            "Risiko": risk, "Score": score,
         })
-
     result = pd.DataFrame(rows)
     if not result.empty:
         result = result.sort_values("Score", ascending=False).reset_index(drop=True)
@@ -180,112 +183,90 @@ def calc_metrics(prices):
 
 with st.sidebar:
     st.header("Einstellungen")
-    selected_markets = st.multiselect(
-        "Märkte auswählen",
-        options=list(MARKETS.keys()),
-        default=list(MARKETS.keys()),
-    )
-    selected_tickers = []
-    for market in selected_markets:
-        selected_tickers.extend(MARKETS[market].keys())
-    st.caption(f"{len(selected_tickers)} Aktien in der ausgewählten Liste")
-    if st.button("Daten neu laden"):
-        st.cache_data.clear()
-        st.rerun()
+    asset_types = st.multiselect("Anlageklassen", list(UNIVERSE.keys()), default=["Aktien", "ETFs", "Rohstoffe"])
+    selected_markets = {}
+    for asset in asset_types:
+        st.subheader(asset)
+        market_names = list(UNIVERSE[asset].keys())
+        chosen = st.multiselect(
+            f"{asset}: Märkte/Listen",
+            options=market_names,
+            default=market_names,
+            key=f"markets_{asset}",
+        )
+        selected_markets[asset] = chosen
 
-if not selected_tickers:
-    st.info("Bitte wähle mindestens einen Markt in der Seitenleiste aus.")
+tickers = []
+names = {}
+types_by_ticker = {}
+for asset in asset_types:
+    for market in selected_markets.get(asset, []):
+        for ticker, name in UNIVERSE[asset][market].items():
+            tickers.append(ticker)
+            names[ticker] = name
+            types_by_ticker[ticker] = asset
+tickers = list(dict.fromkeys(tickers))
+
+if not tickers:
+    st.info("Wähle mindestens eine Anlageklasse und eine Liste aus.")
     st.stop()
 
 with st.spinner("Lade Kursdaten von Yahoo Finance …"):
-    prices = download_history(tuple(selected_tickers))
-    metrics = calc_metrics(prices)
+    prices = download_history(tuple(tickers))
+    metrics = calculate_metrics(prices)
 
 if prices.empty or metrics.empty:
     st.error("Es konnten keine ausreichenden Kursdaten geladen werden. Bitte später erneut versuchen.")
     st.stop()
 
-# Attach readable company names.
-name_map = {}
-for market in selected_markets:
-    name_map.update(MARKETS[market])
-metrics.insert(1, "Unternehmen", metrics["Ticker"].map(name_map).fillna(metrics["Ticker"]))
+metrics.insert(1, "Anlageklasse", metrics["Ticker"].map(types_by_ticker).fillna("Unbekannt"))
+metrics.insert(2, "Name", metrics["Ticker"].map(names).fillna(metrics["Ticker"]))
+last_dates = pd.to_datetime(prices.index).dropna()
+if len(last_dates):
+    st.caption(f"Letztes vorhandenes Kursdatum: {last_dates.max().strftime('%d.%m.%Y')} · Zwischenspeicherung: bis zu 15 Minuten")
 
-latest_dates = pd.to_datetime(prices.index).dropna()
-if len(latest_dates):
-    st.caption(f"Letztes vorhandenes Kursdatum in den geladenen Daten: {latest_dates.max().strftime('%d.%m.%Y')} · Daten werden bis zu 15 Minuten zwischengespeichert.")
+m1, m2, m3 = st.columns(3)
+m1.metric("Instrumente mit Daten", len(metrics))
+m2.metric("Niedrigeres historisches Risiko", int((metrics["Risiko"] == "Niedriger").sum()))
+m3.metric("Hohes historisches Risiko", int((metrics["Risiko"] == "Hoch").sum()))
 
-c1, c2, c3 = st.columns(3)
-c1.metric("Aktien mit ausreichenden Daten", len(metrics))
-c2.metric("Niedrigeres Risiko", int((metrics["Risiko"] == "Niedriger").sum()))
-c3.metric("Hohes Risiko", int((metrics["Risiko"] == "Hoch").sum()))
-
-st.subheader("Aktien-Rangliste")
-st.caption("Der Score sortiert die ausgewählten Aktien nach Kursmomentum, Trend und historischen Risikokennzahlen. Er ist keine Prognose.")
-display_cols = [
-    "Ticker", "Unternehmen", "Kursdatum", "1J Rendite (%)", "6M Rendite (%)",
-    "Volatilität 1J (%)", "Max. Rückgang 1J (%)", "Risiko", "Score"
-]
-table = metrics[display_cols].copy()
-for col in ["1J Rendite (%)", "6M Rendite (%)", "Volatilität 1J (%)", "Max. Rückgang 1J (%)", "Score"]:
-    table[col] = table[col].round(1)
-st.dataframe(table, use_container_width=True, hide_index=True)
+st.subheader("Rangliste")
+st.caption("Vergleicht die ausgewählten Instrumente nach historischem Kursmomentum, Trend und Risiko. Kein Kauf-/Verkaufssignal.")
+cols = ["Anlageklasse", "Ticker", "Name", "Kursdatum", "1J Rendite (%)", "6M Rendite (%)",
+        "Volatilität 1J (%)", "Max. Rückgang 1J (%)", "Risiko", "Score"]
+shown = metrics[cols].copy()
+for c in ["1J Rendite (%)", "6M Rendite (%)", "Volatilität 1J (%)", "Max. Rückgang 1J (%)", "Score"]:
+    shown[c] = shown[c].round(1)
+st.dataframe(shown, use_container_width=True, hide_index=True)
 
 st.subheader("Kursverlauf")
-available_tickers = list(prices.columns)
-default_ticker = metrics.iloc[0]["Ticker"] if not metrics.empty else available_tickers[0]
-chosen_ticker = st.selectbox(
-    "Aktie auswählen",
-    options=available_tickers,
-    index=available_tickers.index(default_ticker) if default_ticker in available_tickers else 0,
-    format_func=lambda t: f"{t} — {name_map.get(t, t)}",
-)
-
-series = prices[chosen_ticker].dropna().sort_index()
-if not series.empty:
-    chart_df = pd.DataFrame({
-        # Keep actual pandas timestamps; converting to Python .date objects can
-        # cause date values to be treated as categories in some chart setups.
-        "Datum": pd.to_datetime(series.index),
-        "Kurs": series.to_numpy(),
-    }).sort_values("Datum")
-    # Use a real continuous date axis with monthly ticks in chronological order.
-    fig = px.line(
-        chart_df,
-        x="Datum",
-        y="Kurs",
-        title=f"{name_map.get(chosen_ticker, chosen_ticker)} – täglicher Schlusskurs (bereinigt)",
-        markers=False,
-    )
-    fig.update_xaxes(
-        type="date",
-        tickformat="%b %Y",
-        dtick="M1",
-        tick0=chart_df["Datum"].min().strftime("%Y-%m-01"),
-        tickangle=-35,
-        ticklabelmode="instant",
-        automargin=True,
-    )
-    fig.update_layout(
-        xaxis_title="Monat",
-        yaxis_title="Kurs (Währung der Börse)",
-        margin=dict(l=10, r=10, t=55, b=25),
-        hovermode="x unified",
-    )
+options = list(prices.columns)
+default = metrics.iloc[0]["Ticker"] if not metrics.empty else options[0]
+selected = st.selectbox("Instrument auswählen", options,
+                        index=options.index(default) if default in options else 0,
+                        format_func=lambda t: f"{t} — {names.get(t, t)}")
+s = prices[selected].dropna().sort_index()
+if not s.empty:
+    chart = pd.DataFrame({"Datum": pd.to_datetime(s.index), "Kurs": s.to_numpy()})
+    fig = px.line(chart, x="Datum", y="Kurs",
+                  title=f"{names.get(selected, selected)} – Kursverlauf",
+                  markers=False)
+    fig.update_xaxes(type="date", tickformat="%b\n%Y", dtick="M1",
+                     tickangle=-35, ticklabelmode="period", automargin=True)
+    fig.update_layout(xaxis_title="Monat", yaxis_title="Kurs (Börsenwährung)",
+                      margin=dict(l=10, r=10, t=55, b=25), hovermode="x unified")
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.info("Für diese Aktie ist kein Kursverlauf verfügbar.")
+    st.info("Für dieses Instrument sind keine Kursdaten verfügbar.")
 
-with st.expander("Wie werden Risiko und Score berechnet?"):
-    st.markdown(
-        """
-        - **1J-Rendite / 6M-Rendite:** Veränderung gegenüber dem ersten verfügbaren Handelstag im jeweiligen Zeitraum.
-        - **Volatilität 1J:** annualisierte Schwankung der täglichen Renditen; höher bedeutet stärkere Schwankungen.
-        - **Max. Rückgang 1J:** größter prozentualer Rückgang vom vorherigen Höchststand innerhalb des Zeitraums.
-        - **Trend:** letzter Kurs wird mit dem Durchschnitt der letzten 50 bzw. 200 Handelstage verglichen.
-        - **Risiko:** grobe Einteilung anhand historischer Volatilität und maximalem Rückgang. Das ist keine Garantie für zukünftiges Risiko.
-        - **Score:** transparente Ranglisten-Kennzahl aus Rendite, Trend und Risikowerten. Sie berücksichtigt keine Unternehmensfundamentaldaten wie Umsatz, Gewinn oder Bewertung.
-        """
-    )
-
-st.caption("Datenquelle: Yahoo Finance über yfinance. Die Aktienliste ist eine Auswahl und umfasst nicht den gesamten Weltmarkt.")
+with st.expander("So funktionieren Score und Risiko"):
+    st.markdown("""
+- **1J-/6M-Rendite:** historische Preisveränderung.
+- **Volatilität:** annualisierte Schwankung täglicher Renditen.
+- **Max. Rückgang:** größter Rückgang vom vorherigen Hoch innerhalb des Jahres.
+- **Trend:** letzter Kurs gegenüber dem Durchschnitt der letzten 50 und 200 Handelstage.
+- **Risiko:** grobe Einstufung anhand historischer Volatilität und maximalem Rückgang; keine Vorhersage.
+- **Score:** eine vereinfachte Ranglistenkennzahl. Er berücksichtigt keine Fundamentaldaten, Kosten, Steuern, Fondsgebühren oder die besondere Struktur von Futures.
+- **Rohstoffe:** Futures können durch Rollkosten und Laufzeiten anders reagieren als der Spotpreis. Diese Indikatoren sind nicht direkt mit Aktien oder ETFs gleichzusetzen.
+""")
+st.caption("Datenquelle: Yahoo Finance via yfinance. Instrumentenliste ist eine Auswahl, keine vollständige Abdeckung aller Märkte.")
