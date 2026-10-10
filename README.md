@@ -1,12 +1,20 @@
-# ATLAS Analytics — kostenlose globale Kursversion
+# ATLAS Analytics
 
-## Bereitstellung
-1. Lade `app.py` und `requirements.txt` in dein GitHub-Repository `atlas-analytics` hoch und ersetze vorhandene Dateien.
-2. In Streamlit Community Cloud wähle dieses Repository, Branch `main` und Main file path `app.py`.
-3. Deploy oder Reboot der App.
+Streamlit-Dashboard für historische Kursdaten, Risiko-Kennzahlen, Monte-Carlo-Szenarien, News-RSS, einen heuristischen KI-Blasencheck und Beispiel-Portfolios.
 
-## Daten
-Diese Version nutzt `yfinance` als kostenlose, inoffizielle Schnittstelle zu Yahoo Finance. Verfügbarkeit, Symbole und Nutzungsbedingungen können sich ändern; Daten können verzögert/unvollständig sein. Keine API-Key-Eingabe ist nötig.
+## Lokal starten
 
-## Grenzen
-Dies ist eine kuratierte Auswahl internationaler Aktien, keine vollständige Weltbörsenabdeckung. Das Ranking nutzt historische Kursentwicklung, Trend, Volatilität und Drawdown. Es bewertet keine Fundamentaldaten wie Umsatz-/Gewinnwachstum und ist keine Anlageberatung.
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+## Hinweise
+- Die Kursdaten werden über Yahoo Finance / `yfinance` abgerufen. Die Daten sind nicht garantiert echtzeitfähig; der letzte Abrufzeitpunkt und die letzte beobachtete Kurszeile werden getrennt angezeigt.
+- Das Symboluniversum ist kuratiert und nicht die vollständige globale Börse.
+- Monte-Carlo-Ergebnisse hängen von Rendite- und Volatilitätsannahmen ab und sind keine Vorhersagegarantie.
+- Futures sind keine direkten Händlerpreise für physische Edelmetallbarren.
+- Die Musterportfolios sind illustrative Beispiele, keine Anlageberatung.
