@@ -27,7 +27,11 @@ STOCKS = {
 # USA
 "AAPL":"Apple","MSFT":"Microsoft","NVDA":"NVIDIA","AMZN":"Amazon","GOOGL":"Alphabet A","GOOG":"Alphabet C","META":"Meta Platforms","BRK-B":"Berkshire Hathaway B","LLY":"Eli Lilly","AVGO":"Broadcom","JPM":"JPMorgan Chase","V":"Visa","MA":"Mastercard","XOM":"Exxon Mobil","COST":"Costco","WMT":"Walmart","NFLX":"Netflix","ORCL":"Oracle","AMD":"AMD","CRM":"Salesforce","ADBE":"Adobe","QCOM":"Qualcomm","INTC":"Intel","TSLA":"Tesla","KO":"Coca-Cola","PEP":"PepsiCo","UNH":"UnitedHealth","CAT":"Caterpillar","GE":"GE Aerospace","IBM":"IBM","CSCO":"Cisco","AMAT":"Applied Materials","MU":"Micron","PLTR":"Palantir","UBER":"Uber","ABNB":"Airbnb","DIS":"Walt Disney","MCD":"McDonald's","BA":"Boeing","GS":"Goldman Sachs","BAC":"Bank of America","C":"Citigroup","WFC":"Wells Fargo","CVX":"Chevron","COP":"ConocoPhillips","PFE":"Pfizer","MRK":"Merck","TMO":"Thermo Fisher","ISRG":"Intuitive Surgical","NOW":"ServiceNow","PANW":"Palo Alto Networks","SNPS":"Synopsys","CRWD":"CrowdStrike","SHOP":"Shopify","DELL":"Dell Technologies","ARM":"Arm Holdings","SMCI":"Super Micro Computer","LRCX":"Lam Research","KLAC":"KLA","TXN":"Texas Instruments","BKNG":"Booking Holdings","SPOT":"Spotify","PYPL":"PayPal","T":"AT&T","VZ":"Verizon","NKE":"Nike","LOW":"Lowe's","HD":"Home Depot","UPS":"UPS","FDX":"FedEx","AXP":"American Express","BLK":"BlackRock","SCHW":"Charles Schwab","COIN":"Coinbase","MSTR":"Strategy","F":"Ford","GM":"General Motors",
 # Europe
-"SAP":"SAP","SIE.DE":"Siemens","ALV.DE":"Allianz","DTE.DE":"Deutsche Telekom","MUV2.DE":"Munich Re","AIR.PA":"Airbus","MC.PA":"LVMH","OR.PA":"L'Oreal","TTE.PA":"TotalEnergies","SAN.PA":"Sanofi","SU.PA":"Schneider Electric","ASML":"ASML","RHM.DE":"Rheinmetall","MBG.DE":"Mercedes-Benz","BMW.DE":"BMW","VOW3.DE":"Volkswagen","BAS.DE":"BASF","IFX.DE":"Infineon","ADS.DE":"Adidas","DBK.DE":"Deutsche Bank","ENR.DE":"Siemens Energy","BN.PA":"Danone","NOVO-B.CO":"Novo Nordisk","NVO":"Novo Nordisk ADR","AZN":"AstraZeneca","SHEL":"Shell","HSBA.L":"HSBC","BP.L":"BP","ULVR.L":"Unilever","RIO":"Rio Tinto","GSK":"GSK","REL.L":"RELX","LSEG.L":"London Stock Exchange Group","BHP":"BHP Group","NESN.SW":"Nestle","ROG.SW":"Roche","NOVN.SW":"Novartis","UBSG.SW":"UBS","7203.T":"Toyota","6758.T":"Sony","9984.T":"SoftBank Group","005930.KS":"Samsung Electronics","000660.KS":"SK Hynix","0700.HK":"Tencent","9988.HK":"Alibaba","3690.HK":"Meituan","TSM":"TSMC ADR","BABA":"Alibaba ADR","INFY":"Infosys ADR","RELIANCE.NS":"Reliance Industries","^BSESN":"BSE Sensex","^N225":"Nikkei 225"
+"SAP":"SAP","SIE.DE":"Siemens","ALV.DE":"Allianz","DTE.DE":"Deutsche Telekom","MUV2.DE":"Munich Re","AIR.PA":"Airbus","MC.PA":"LVMH","OR.PA":"L'Oreal","TTE.PA":"TotalEnergies","SAN.PA":"Sanofi","SU.PA":"Schneider Electric","ASML":"ASML","RHM.DE":"Rheinmetall","MBG.DE":"Mercedes-Benz","BMW.DE":"BMW","VOW3.DE":"Volkswagen","BAS.DE":"BASF","IFX.DE":"Infineon","ADS.DE":"Adidas","DBK.DE":"Deutsche Bank","ENR.DE":"Siemens Energy","BN.PA":"Danone","NOVO-B.CO":"Novo Nordisk","NVO":"Novo Nordisk ADR","AZN":"AstraZeneca","SHEL":"Shell","HSBA.L":"HSBC","BP.L":"BP","ULVR.L":"Unilever","RIO":"Rio Tinto","GSK":"GSK","REL.L":"RELX","LSEG.L":"London Stock Exchange Group","BHP":"BHP Group","NESN.SW":"Nestle","ROG.SW":"Roche","NOVN.SW":"Novartis","UBSG.SW":"UBS","7203.T":"Toyota","6758.T":"Sony","9984.T":"SoftBank Group","005930.KS":"Samsung Electronics","000660.KS":"SK Hynix","0700.HK":"Tencent","9988.HK":"Alibaba","3690.HK":"Meituan","TSM":"TSMC ADR","BABA":"Alibaba ADR","INFY":"Infosys ADR","RELIANCE.NS":"Reliance Industries","^BSESN":"BSE Sensex","^N225":"Nikkei 225",
+# Additional US-listed equities across sectors
+"ACN":"Accenture","ADP":"Automatic Data Processing","ADI":"Analog Devices","AIG":"American International Group","AMGN":"Amgen","APH":"Amphenol","APP":"AppLovin","APO":"Apollo Global Management","AXON":"Axon Enterprise","AXP":"American Express","BABA":"Alibaba ADR","BKR":"Baker Hughes","BMY":"Bristol Myers Squibb","BX":"Blackstone","CARR":"Carrier Global","CCL":"Carnival","CEG":"Constellation Energy","CHTR":"Charter Communications","CMCSA":"Comcast","CMG":"Chipotle Mexican Grill","CMI":"Cummins","COR":"Cencora","CPRT":"Copart","CRH":"CRH","CTAS":"Cintas","CVS":"CVS Health","DASH":"DoorDash","DDOG":"Datadog","DE":"Deere","DG":"Dollar General","DHR":"Danaher","DLR":"Digital Realty","DUK":"Duke Energy","EA":"Electronic Arts","EBAY":"eBay","ECL":"Ecolab","ELV":"Elevance Health","EMR":"Emerson Electric","ETN":"Eaton","FIS":"Fidelity National Information Services","FTNT":"Fortinet","GD":"General Dynamics","GILD":"Gilead Sciences","GMED":"Globus Medical","GPN":"Global Payments","HAL":"Halliburton","HON":"Honeywell","HPE":"Hewlett Packard Enterprise","HPQ":"HP Inc.","ICE":"Intercontinental Exchange","INTU":"Intuit","ITW":"Illinois Tool Works","JCI":"Johnson Controls","KDP":"Keurig Dr Pepper","KKR":"KKR","KHC":"Kraft Heinz","KMI":"Kinder Morgan","LHX":"L3Harris Technologies","LIN":"Linde","LMT":"Lockheed Martin","LULU":"Lululemon","MAR":"Marriott International","MCHP":"Microchip Technology","MDLZ":"Mondelez International","MET":"MetLife","MMM":"3M","MNST":"Monster Beverage","MO":"Altria","MRVL":"Marvell Technology","MS":"Morgan Stanley","MSI":"Motorola Solutions","NEM":"Newmont","NOC":"Northrop Grumman","ODFL":"Old Dominion Freight Line","ON":"ON Semiconductor","OXY":"Occidental Petroleum","PCAR":"PACCAR","PDD":"PDD Holdings","PGR":"Progressive","PH":"Parker Hannifin","PLD":"Prologis","PM":"Philip Morris International","PNC":"PNC Financial Services","PSA":"Public Storage","RBLX":"Roblox","REGN":"Regeneron Pharmaceuticals","ROP":"Roper Technologies","ROST":"Ross Stores","RTX":"RTX","SBUX":"Starbucks","SLB":"SLB","SNOW":"Snowflake","SO":"Southern Company","STX":"Seagate Technology","SYK":"Stryker","TGT":"Target","TJX":"TJX Companies","TMUS":"T-Mobile US","TRV":"Travelers","TT":"Trane Technologies","TTD":"The Trade Desk","TWLO":"Twilio","U":"Unity Software","VLO":"Valero Energy","VRTX":"Vertex Pharmaceuticals","WELL":"Welltower","WM":"Waste Management","WMB":"Williams Companies","WDAY":"Workday","XEL":"Xcel Energy","ZTS":"Zoetis",
+# Additional international equities / ADRs
+"7203.T":"Toyota Motor","6758.T":"Sony Group","8035.T":"Tokyo Electron","9983.T":"Fast Retailing","8306.T":"Mitsubishi UFJ Financial","6861.T":"Keyence","6501.T":"Hitachi","7974.T":"Nintendo","9432.T":"NTT","8058.T":"Mitsubishi Corporation","005380.KS":"Hyundai Motor","051910.KS":"LG Chem","005490.KS":"POSCO Holdings","035420.KS":"NAVER","066570.KS":"LG Electronics","000270.KS":"Kia","1810.HK":"Xiaomi","0941.HK":"China Mobile","1299.HK":"AIA Group","9618.HK":"JD.com","9999.HK":"NetEase","1024.HK":"Kuaishou","2318.HK":"Ping An Insurance","1398.HK":"ICBC","3988.HK":"Bank of China","D05.SI":"DBS Group","O39.SI":"OCBC","CBA.AX":"Commonwealth Bank of Australia","BHP.AX":"BHP Group Australia","CSL.AX":"CSL Limited","WES.AX":"Wesfarmers","NAB.AX":"National Australia Bank","RIO.AX":"Rio Tinto Australia","7203.T":"Toyota Motor","BARC.L":"Barclays","LLOY.L":"Lloyds Banking Group","DGE.L":"Diageo","PRU.L":"Prudential","III.L":"3i Group","AZN.L":"AstraZeneca London","BATS.L":"British American Tobacco","IBE.MC":"Iberdrola","ITX.MC":"Inditex","SAN.MC":"Banco Santander","BBVA.MC":"BBVA","ENEL.MI":"Enel","ISP.MI":"Intesa Sanpaolo","UCG.MI":"UniCredit","KER.PA":"Kering","CS.PA":"AXA","BNP.PA":"BNP Paribas","DG.PA":"Vinci","SAF.PA":"Safran","RACE.MI":"Ferrari","STLAM.MI":"Stellantis","ADYEN.AS":"Adyen","PHIA.AS":"Philips","PRX.AS":"Prosus","DSY.PA":"Dassault Systemes","BAYN.DE":"Bayer","HNR1.DE":"Hannover Rueck","HEI.DE":"Heidelberg Materials","FRE.DE":"Fresenius","BEI.DE":"Beiersdorf","ZAL.DE":"Zalando","RWE.DE":"RWE","VNA.DE":"Vonovia","MTX.DE":"MTU Aero Engines","HEN3.DE":"Henkel","PUM.DE":"Puma","CON.DE":"Continental","QIA.DE":"QIAGEN","DHL.DE":"DHL Group","DB1.DE":"Deutsche Boerse","VOW3.DE":"Volkswagen preferred","KNIN.SW":"Kuehne + Nagel","ZURN.SW":"Zurich Insurance","ABBN.SW":"ABB","NOVO-B.CO":"Novo Nordisk Copenhagen","EQNR.OL":"Equinor","DNB.OL":"DNB Bank","VOLV-B.ST":"Volvo Group","ERIC-B.ST":"Ericsson","NESTE.HE":"Neste","ENI.MI":"Eni","TCS.NS":"Tata Consultancy Services","HDFCBANK.NS":"HDFC Bank","ICICIBANK.NS":"ICICI Bank","BHARTIARTL.NS":"Bharti Airtel","LT.NS":"Larsen & Toubro","SBIN.NS":"State Bank of India","ITC.NS":"ITC Limited","TATAMOTORS.NS":"Tata Motors","INFY.NS":"Infosys","RELIANCE.NS":"Reliance Industries"
 }
 ETFS = {
 "SPY":"SPDR S&P 500","VOO":"Vanguard S&P 500","QQQ":"Invesco Nasdaq-100","VTI":"Vanguard Total US Market","VT":"Vanguard Total World","ACWI":"iShares MSCI ACWI","VEA":"Vanguard Developed Markets","VWO":"Vanguard Emerging Markets","IEFA":"iShares Core MSCI EAFE","IEMG":"iShares Core MSCI Emerging Markets","EFA":"iShares MSCI EAFE","EEM":"iShares MSCI Emerging Markets","DIA":"SPDR Dow Jones Industrial Average","IWM":"iShares Russell 2000","SCHD":"Schwab US Dividend Equity","VIG":"Vanguard Dividend Appreciation","XLK":"Technology Select Sector","XLF":"Financial Select Sector","XLE":"Energy Select Sector","XLV":"Health Care Select Sector","XLI":"Industrial Select Sector","SMH":"VanEck Semiconductor","SOXX":"iShares Semiconductor","ARKK":"ARK Innovation","TLT":"iShares 20+ Year Treasury Bond","IEF":"iShares 7-10 Year Treasury Bond","SHY":"iShares 1-3 Year Treasury Bond","AGG":"iShares Core US Aggregate Bond","BND":"Vanguard Total Bond Market","LQD":"iShares Investment Grade Corporate Bond","HYG":"iShares High Yield Corporate Bond","TIP":"iShares TIPS Bond","GLD":"SPDR Gold Shares","IAU":"iShares Gold Trust","SLV":"iShares Silver Trust","PDBC":"Invesco Optimum Yield Diversified Commodity","DBC":"Invesco DB Commodity Index","USO":"United States Oil Fund","UNG":"United States Natural Gas Fund","VNQ":"Vanguard Real Estate","REET":"iShares Global REIT","EUNL.DE":"iShares Core MSCI World UCITS","IWDA.AS":"iShares Core MSCI World","VWCE.DE":"Vanguard FTSE All-World UCITS","VUSA.AS":"Vanguard S&P 500 UCITS","CSPX.L":"iShares Core S&P 500 UCITS","SXR8.DE":"iShares Core S&P 500 UCITS","EXSA.DE":"iShares STOXX Europe 600","IS3N.DE":"iShares Core MSCI EM IMI","XDWT.DE":"Xtrackers MSCI World Information Technology","IQQH.DE":"iShares Global Clean Energy UCITS","EIMI.L":"iShares Core MSCI EM IMI"
@@ -49,6 +53,7 @@ def fetch_history(ticker: str) -> pd.DataFrame:
     except Exception:
         return pd.DataFrame()
 
+@st.cache_data(ttl=900, show_spinner=False)
 def metrics(ticker, name, kind):
     d = fetch_history(ticker)
     if d.empty or len(d) < 3: return None
@@ -121,58 +126,16 @@ def rss_news():
     if not df.empty: df=df.sort_values("Zeitobjekt",ascending=False).drop_duplicates(subset=["Meldung"])
     return df, ("Nicht erreichbar: "+", ".join(errors) if errors else "")
 
-
-@st.cache_data(ttl=300, show_spinner=False)
-def cached_news():
-    return rss_news()
-
-def add_forecast(df: pd.DataFrame, news: pd.DataFrame) -> pd.DataFrame:
-    """Transparent heuristic estimate, not a validated predictive model."""
-    if df.empty:
-        return df
-    result = df.copy()
-    headlines = []
-    if not news.empty:
-        headlines = [(str(r.get("Meldung","")) + " " + str(r.get("Kurzinfo",""))).lower()
-                     for _, r in news.iterrows()]
-    positive = ("growth","grew","surge","record","approval","deal","profit","beats","launch","breakthrough",
-                "gains","rise","rises","positive","agreement","ceasefire","rate cut","innovation",
-                "wachstum","rekord","gewinn","steigt","anstieg","durchbruch","einigt","waffenruhe")
-    negative = ("war","attack","crisis","crash","sanction","loss","misses","lawsuit","cuts forecast","recession",
-                "inflation","default","decline","falls","falling","risk","conflict","invasion","krieg","krise",
-                "angriff","sanktion","verlust","rezession","streik","eskaliert")
-    directions=[]; probs=[]; forecasts=[]; news_scores=[]
-    for _, row in result.iterrows():
-        terms = {str(row.get("Ticker","")).lower(), str(row.get("Anlage","")).lower()}
-        terms |= {w for w in re.findall(r"[a-z0-9]+", str(row.get("Anlage","")).lower()) if len(w)>3}
-        related = [h for h in headlines if any(term and term in h for term in terms)]
-        score=0
-        for h in related:
-            score += sum(1 for w in positive if w in h) - sum(1 for w in negative if w in h)
-        news_score=float(np.clip(score/max(3,len(related)*2),-1,1)) if related else 0.0
-        ann=float(row.get("Rendite p.a. %",0) or 0)/100
-        mom=float(row.get("1J Rendite %",0) or 0)/100
-        vol=float(row.get("Volatilität %",35) or 35)/100
-        # Shrunk historical trend plus a deliberately small, keyword-based news adjustment.
-        expected=float(np.clip(.25*ann + .45*mom + .30*news_score*min(max(vol,.10),.60),-.50,.50))
-        scale=max(vol, .08)
-        probability=float(1/(1+math.exp(-np.clip(expected/scale*1.35,-6,6))))
-        directions.append("Plus" if expected>0.01 else "Minus" if expected<-.01 else "Seitwärts")
-        probs.append(probability*100)
-        forecasts.append(expected*100)
-        news_scores.append("Positiv" if news_score>.05 else "Negativ" if news_score<-.05 else "Neutral/keine passende Meldung")
-    result["Modellrichtung"] = directions
-    result["Geschätzte Veränderung %"] = forecasts
-    result["Plus-Wahrscheinlichkeit %"] = probs
-    result["Nachrichtensignal"] = news_scores
-    return result
-
 st.title("🌐 ATLAS Analytics")
 st.caption("Markt-Screener · Langfristige Kursdaten · Risikoanalyse · Nachrichtenlage. Keine Anlageberatung.")
 with st.sidebar:
     st.header("Einstellungen")
     refresh=st.button("🔄 Daten aktualisieren")
-    if refresh: st.cache_data.clear(); st.rerun()
+    if refresh:
+        st.cache_data.clear()
+        for key in ("commodities_df", "metals_df", "idea_universe_df", "idea_df", "idea_universe_version"):
+            st.session_state.pop(key, None)
+        st.rerun()
     st.caption("Kursdaten: Yahoo Finance, Aktualisierungscache 15 Minuten. Verfügbarkeit und Historie unterscheiden sich je Ticker.")
     st.divider()
     st.subheader("Investment-Szenario")
@@ -191,24 +154,18 @@ with st.spinner("Lade Marktübersichten …"):
     elif universe_choice=="ETFs": active={**ETFS}
     elif universe_choice=="Rohstoffe": active={**COMMODITIES}
     else: active=all_universe
-    st.caption(f"Auswahl: {len(active)} Symbole. Kostenlose Datenquellen decken nicht zuverlässig jedes weltweit gelistete Wertpapier ab.")
-    scan=st.button("📊 Ranglisten laden", type="primary")
+    st.caption(f"Auswahl: {len(active)} Symbole aus mehreren Märkten. Eine vollständige Liste jedes weltweit gelisteten Wertpapiers ist mit dieser kostenlosen Kursquelle nicht zuverlässig verfügbar.")
+    st.caption("Die Rangliste lädt automatisch. Beim ersten Start kann die große weltweite Auswahl einige Minuten benötigen; Kursdaten werden anschließend 15 Minuten zwischengespeichert.")
 
-# Avoid fetching hundreds of symbols just by opening the page; cache results once requested.
-if "atlas_tables" not in st.session_state: st.session_state.atlas_tables={}
-if scan:
-    base_table=get_table(active, universe_choice)
-    with st.spinner("Prüfe aktuelle Nachrichten für die Modellschätzung …"):
-        news_for_model, _news_status = cached_news()
-    st.session_state.atlas_tables[universe_choice]=add_forecast(base_table, news_for_model)
+# Automatic ranking load; no separate load button. Cached metric calculations avoid repeated price requests.
+display_df = get_table(active, universe_choice)
 
 # dedicated metals ranking: longest provider history available
 st.header("Ranglisten")
-st.caption("Modellrichtung, geschätzte Veränderung und Plus-Wahrscheinlichkeit sind heuristische Schätzungen aus historischer Entwicklung und passenden Schlagworten in verfügbaren Nachrichten – keine verlässliche Vorhersage. Bei wenig passenden Nachrichten wird das Signal als neutral angezeigt.")
 tab1,tab2,tab3,tab4=st.tabs(["Aktien & ETFs / Gesamtmarkt","Rohstoffe","Physische Edelmetalle","Risiko & Portfolio"])
 with tab1:
     st.write("Die Rangliste nutzt jeweils die **längste von der Datenquelle gelieferte Historie** (`period=max`). Die Score-Spalte ist eine vereinfachte Kennzahl, kein Kursziel.")
-    df=st.session_state.atlas_tables.get(universe_choice,pd.DataFrame())
+    df=display_df
     if not df.empty:
         types=st.multiselect("Anlagearten anzeigen",sorted(df.Typ.unique()),default=sorted(df.Typ.unique()),key="typefilter")
         view=df[df.Typ.isin(types)].copy()
@@ -216,21 +173,17 @@ with tab1:
         pick=st.selectbox("Kursverlauf ansehen",view.Ticker.tolist(),key="chart_stock")
         h=fetch_history(pick)
         if not h.empty: st.plotly_chart(px.line(h.reset_index(),x=h.index.name or "Date",y="Close",title=f"{pick} – verfügbare Gesamthistorie"),use_container_width=True)
-    else: st.info("Klicke auf **Ranglisten laden**, um die Kursdaten für die Auswahl abzurufen. Das kann einige Minuten dauern.")
+    else: st.info("Für die ausgewählten Symbole sind derzeit keine ausreichenden Kursdaten abrufbar. Nutze bei Bedarf „Daten aktualisieren“.")
 with tab2:
     st.write("Rohstoffe werden überwiegend über börsengehandelte Futures abgebildet. Futures können Rollverluste, Laufzeitunterschiede und besondere Risiken aufweisen.")
-    if "commodities_df" not in st.session_state or st.button("Rohstoffrangliste aktualisieren",key="commodity_scan"):
-        _base_commodities=get_table(COMMODITIES,"Rohstoffe")
-        _news_for_model, _ = cached_news()
-        st.session_state.commodities_df=add_forecast(_base_commodities, _news_for_model)
+    if "commodities_df" not in st.session_state:
+        st.session_state.commodities_df=get_table(COMMODITIES,"Rohstoffe")
     cdf=st.session_state.get("commodities_df",pd.DataFrame())
     if not cdf.empty: st.dataframe(style_table(cdf),use_container_width=True,height=520)
 with tab3:
     st.warning("Wichtig: Diese Liste verwendet Futures als Preis-Proxy für Edelmetalle, nicht den tatsächlichen Händlerpreis für Barren oder Münzen. Aufschläge, Lagerung und Kauf-/Verkaufspreise fehlen.")
-    if "metals_df" not in st.session_state or st.button("Edelmetallrangliste aktualisieren",key="metal_scan"):
-        _base_metals=get_table(PHYSICAL_METALS,"Physische Edelmetalle")
-        _news_for_model, _ = cached_news()
-        st.session_state.metals_df=add_forecast(_base_metals, _news_for_model)
+    if "metals_df" not in st.session_state:
+        st.session_state.metals_df=get_table(PHYSICAL_METALS,"Physische Edelmetalle")
     mdf=st.session_state.get("metals_df",pd.DataFrame())
     if not mdf.empty:
         st.dataframe(style_table(mdf),use_container_width=True)
@@ -301,52 +254,41 @@ with tab4:
         except Exception as e: st.error(f"Risikoanalyse fehlgeschlagen: {e}")
 
 st.divider()
-if "show_news_panel" not in st.session_state:
-    st.session_state.show_news_panel = False
-if st.button("🌍 Hintergrundinformationen anzeigen / ausblenden", key="toggle_news_panel"):
-    st.session_state.show_news_panel = not st.session_state.show_news_panel
-
-if st.session_state.show_news_panel:
-    st.header("🌍 Hintergrundinformationen: aktuelle Meldungen")
-    st.write("Diese Meldungen sind zusätzlich zur Kursentwicklung ein Signal für die Modellschätzung. Die automatische Schlagwortauswertung ist einfach und kann Zusammenhänge falsch einordnen; sie ersetzt keine Prüfung durch Menschen.")
-    if st.button("Nachrichten neu laden",key="news_refresh"):
-        st.cache_data.clear()
-    news, status = cached_news()
-    if status:
-        st.caption(status)
-    if news.empty:
-        st.warning("Keine aktuellen RSS-Meldungen abrufbar. Feeds können ausfallen oder verspätet sein.")
+st.header("🌍 Weltgeschehen: aktuelle Meldungen & anstehende Termine")
+st.write("Der News-Tab versucht Meldungen der letzten 48 Stunden aus mehreren institutionellen bzw. etablierten RSS-Quellen zu laden. Das ist keine vollständige Echtzeit-Erfassung aller Ereignisse; Feeds können ausfallen oder verspätet sein.")
+if feedparser is None: st.warning("Für Nachrichten bitte `feedparser` in requirements.txt installieren.")
+else:
+    if st.button("Nachrichten neu laden",key="news_refresh"): st.cache_data.clear()
+    @st.cache_data(ttl=300,show_spinner=False)
+    def cached_news(): return rss_news()
+    news, status=cached_news()
+    if status: st.caption(status)
+    if news.empty: st.warning("Keine aktuellen RSS-Meldungen abrufbar. Bitte später erneut versuchen.")
     else:
-        st.caption(f"{len(news)} Meldungen aus erreichbaren Feeds · Abrufzeit {now.strftime('%d.%m.%Y %H:%M')} (Europe/Berlin)")
+        st.caption(f"{len(news)} Meldungen aus erreichbaren Feeds · geprüft am {now.strftime('%d.%m.%Y %H:%M')} (Europe/Berlin)")
         search=st.text_input("Nachrichten filtern",placeholder="z. B. Krieg, Zinsen, KI, Energie, Klima")
-        if search:
-            news=news[news.apply(lambda row: search.lower() in (str(row.Meldung)+" "+str(row.Kurzinfo)+" "+str(row.Quelle)).lower(),axis=1)]
+        if search: news=news[news.apply(lambda row: search.lower() in (str(row.Meldung)+" "+str(row.Kurzinfo)+" "+str(row.Quelle)).lower(),axis=1)]
         for _,r in news.head(50).iterrows():
             with st.container(border=True):
                 st.markdown(f"**{r['Meldung']}**")
                 st.caption(f"{r['Quelle']} · {r['Zeit (lokal)']}")
-                if r['Kurzinfo']:
-                    st.write(r['Kurzinfo'])
-                if r['Link']:
-                    st.markdown(f"[Originalquelle öffnen]({r['Link']})")
-        st.subheader("Angekündigte Ereignisse in den nächsten 48 Stunden")
-        st.write("RSS-Feeds enthalten nicht immer strukturierte Kalenderdaten. Diese Liste kann daher unvollständig sein.")
-        upcoming=re.compile(r"(tomorrow|next\s+(day|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|scheduled for|set to|will announce|due on|upcoming|expected to announce|ist angekündigt|morgen|soll .* bekanntgeben)",re.I)
+                if r['Kurzinfo']: st.write(r['Kurzinfo'])
+                if r['Link']: st.markdown(f"[Originalquelle öffnen]({r['Link']})")
+        st.subheader("Termine in den nächsten 48 Stunden")
+        st.write("Die RSS-Feeds enthalten nicht immer strukturierte Kalenderdaten. Diese Liste zeigt nur eindeutig datierte Termine, die aus gelieferten Meldungen zuverlässig erkannt werden; wenn nichts erkannt wird, bedeutet das nicht, dass keine Termine stattfinden.")
+        # Conservatively surface only entries explicitly referring to upcoming scheduled events.
+        upcoming=re.compile(r"(tomorrow|next\s+(day|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|scheduled for|set to|will announce|due on|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|upcoming|expected to announce|is expected to)",re.I)
         future=news[news.apply(lambda row: bool(upcoming.search(str(row.Meldung)+" "+str(row.Kurzinfo))),axis=1)]
-        if future.empty:
-            st.info("In den abgerufenen Meldungen wurden keine eindeutig erkennbaren angekündigten Termine gefunden.")
-        else:
-            st.dataframe(future[["Zeit (lokal)","Quelle","Meldung","Link"]],use_container_width=True,hide_index=True)
+        if future.empty: st.info("In den abgerufenen Meldungen wurden keine eindeutig erkennbaren angekündigten Termine gefunden.")
+        else: st.dataframe(future[["Zeit (lokal)","Quelle","Meldung","Link"]].rename(columns={"Zeit (lokal":"Meldungszeit"}),use_container_width=True,hide_index=True)
 
 st.divider()
 st.header("💡 10 gemischte Portfolio-Vorschläge")
 st.write("Jeder Vorschlag besteht aus mehreren Anlagearten – zum Beispiel Aktien, ETFs und gegebenenfalls Rohstoffen. Die Gewichte werden auf 100 % verteilt. Das sind Modellportfolios, keine persönlichen Kaufempfehlungen.")
-if st.button("🧩 10 gemischte Vorschläge berechnen", key="ideas_load", type="primary"):
-    # Pull a diversified sample from every category, regardless of the selected ranking tab.
-    sample = {}
-    for group in (STOCKS, ETFS, COMMODITIES):
-        sample.update(dict(list(group.items())))
-    with st.spinner("Lade lange Kursreihen für gemischte Portfolios …"):
+# Automatically calculate mixed suggestions as part of page loading; no load button.
+if "idea_universe_df" not in st.session_state or st.session_state.get("idea_universe_version") != "global-universe-v2":
+    sample = {**STOCKS, **ETFS, **COMMODITIES}
+    with st.spinner("Lade Daten für die zehn gemischten Modellportfolios …"):
         frames=[]
         progress=st.progress(0.0, text="Analysiere Aktien, ETFs und Rohstoffe …")
         for i,(ticker,name) in enumerate(sample.items()):
@@ -356,6 +298,7 @@ if st.button("🧩 10 gemischte Vorschläge berechnen", key="ideas_load", type="
         progress.empty()
         st.session_state.idea_universe_df=pd.DataFrame(frames)
         st.session_state.idea_df=st.session_state.idea_universe_df.copy()
+        st.session_state.idea_universe_version="global-universe-v2"
 
 idea_source=st.session_state.get("idea_universe_df", pd.DataFrame())
 if not idea_source.empty:
@@ -419,6 +362,6 @@ if not idea_source.empty:
         st.dataframe(allocation.style.format({"Gewicht %":"{:.1f}%","Betrag (€)":"€ {:,.2f}"}),use_container_width=True,hide_index=True)
         st.caption(f"Zeitraum-Auswahl: {horizon}. Die Tabelle zeigt eine Modellaufteilung, keine garantierte Rendite. Gebühren, Steuern, Währung und zukünftige Verluste sind nicht berücksichtigt.")
 else:
-    st.info("Klicke auf **10 gemischte Vorschläge berechnen**. Die App lädt dann eine Auswahl aus Aktien, ETFs und Rohstoffen; das kann etwas dauern.")
+    st.info("Die zehn gemischten Vorschläge konnten nicht erstellt werden, weil aktuell zu wenige Kursreihen verfügbar sind. Bitte später Daten aktualisieren.")
 
 st.caption("Datenhinweis: Yahoo Finance kann verspätete, unvollständige oder fehlerhafte Daten liefern. Kursreihen unterschiedlicher Instrumente beginnen zu unterschiedlichen Zeitpunkten. Futures und ETFs sind nicht identisch mit dem physischen Rohstoff. Alle Scores und Szenarien sind vereinfachte Modellwerte und keine Kaufempfehlung.")
