@@ -121,6 +121,52 @@ def rss_news():
     if not df.empty: df=df.sort_values("Zeitobjekt",ascending=False).drop_duplicates(subset=["Meldung"])
     return df, ("Nicht erreichbar: "+", ".join(errors) if errors else "")
 
+
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_news():
+    return rss_news()
+
+def add_forecast(df: pd.DataFrame, news: pd.DataFrame) -> pd.DataFrame:
+    """Transparent heuristic estimate, not a validated predictive model."""
+    if df.empty:
+        return df
+    result = df.copy()
+    headlines = []
+    if not news.empty:
+        headlines = [(str(r.get("Meldung","")) + " " + str(r.get("Kurzinfo",""))).lower()
+                     for _, r in news.iterrows()]
+    positive = ("growth","grew","surge","record","approval","deal","profit","beats","launch","breakthrough",
+                "gains","rise","rises","positive","agreement","ceasefire","rate cut","innovation",
+                "wachstum","rekord","gewinn","steigt","anstieg","durchbruch","einigt","waffenruhe")
+    negative = ("war","attack","crisis","crash","sanction","loss","misses","lawsuit","cuts forecast","recession",
+                "inflation","default","decline","falls","falling","risk","conflict","invasion","krieg","krise",
+                "angriff","sanktion","verlust","rezession","streik","eskaliert")
+    directions=[]; probs=[]; forecasts=[]; news_scores=[]
+    for _, row in result.iterrows():
+        terms = {str(row.get("Ticker","")).lower(), str(row.get("Anlage","")).lower()}
+        terms |= {w for w in re.findall(r"[a-z0-9]+", str(row.get("Anlage","")).lower()) if len(w)>3}
+        related = [h for h in headlines if any(term and term in h for term in terms)]
+        score=0
+        for h in related:
+            score += sum(1 for w in positive if w in h) - sum(1 for w in negative if w in h)
+        news_score=float(np.clip(score/max(3,len(related)*2),-1,1)) if related else 0.0
+        ann=float(row.get("Rendite p.a. %",0) or 0)/100
+        mom=float(row.get("1J Rendite %",0) or 0)/100
+        vol=float(row.get("Volatilität %",35) or 35)/100
+        # Shrunk historical trend plus a deliberately small, keyword-based news adjustment.
+        expected=float(np.clip(.25*ann + .45*mom + .30*news_score*min(max(vol,.10),.60),-.50,.50))
+        scale=max(vol, .08)
+        probability=float(1/(1+math.exp(-np.clip(expected/scale*1.35,-6,6))))
+        directions.append("Plus" if expected>0.01 else "Minus" if expected<-.01 else "Seitwärts")
+        probs.append(probability*100)
+        forecasts.append(expected*100)
+        news_scores.append("Positiv" if news_score>.05 else "Negativ" if news_score<-.05 else "Neutral/keine passende Meldung")
+    result["Modellrichtung"] = directions
+    result["Geschätzte Veränderung %"] = forecasts
+    result["Plus-Wahrscheinlichkeit %"] = probs
+    result["Nachrichtensignal"] = news_scores
+    return result
+
 st.title("🌐 ATLAS Analytics")
 st.caption("Markt-Screener · Langfristige Kursdaten · Risikoanalyse · Nachrichtenlage. Keine Anlageberatung.")
 with st.sidebar:
@@ -151,10 +197,14 @@ with st.spinner("Lade Marktübersichten …"):
 # Avoid fetching hundreds of symbols just by opening the page; cache results once requested.
 if "atlas_tables" not in st.session_state: st.session_state.atlas_tables={}
 if scan:
-    st.session_state.atlas_tables[universe_choice]=get_table(active, universe_choice)
+    base_table=get_table(active, universe_choice)
+    with st.spinner("Prüfe aktuelle Nachrichten für die Modellschätzung …"):
+        news_for_model, _news_status = cached_news()
+    st.session_state.atlas_tables[universe_choice]=add_forecast(base_table, news_for_model)
 
 # dedicated metals ranking: longest provider history available
 st.header("Ranglisten")
+st.caption("Modellrichtung, geschätzte Veränderung und Plus-Wahrscheinlichkeit sind heuristische Schätzungen aus historischer Entwicklung und passenden Schlagworten in verfügbaren Nachrichten – keine verlässliche Vorhersage. Bei wenig passenden Nachrichten wird das Signal als neutral angezeigt.")
 tab1,tab2,tab3,tab4=st.tabs(["Aktien & ETFs / Gesamtmarkt","Rohstoffe","Physische Edelmetalle","Risiko & Portfolio"])
 with tab1:
     st.write("Die Rangliste nutzt jeweils die **längste von der Datenquelle gelieferte Historie** (`period=max`). Die Score-Spalte ist eine vereinfachte Kennzahl, kein Kursziel.")
@@ -170,13 +220,17 @@ with tab1:
 with tab2:
     st.write("Rohstoffe werden überwiegend über börsengehandelte Futures abgebildet. Futures können Rollverluste, Laufzeitunterschiede und besondere Risiken aufweisen.")
     if "commodities_df" not in st.session_state or st.button("Rohstoffrangliste aktualisieren",key="commodity_scan"):
-        st.session_state.commodities_df=get_table(COMMODITIES,"Rohstoffe")
+        _base_commodities=get_table(COMMODITIES,"Rohstoffe")
+        _news_for_model, _ = cached_news()
+        st.session_state.commodities_df=add_forecast(_base_commodities, _news_for_model)
     cdf=st.session_state.get("commodities_df",pd.DataFrame())
     if not cdf.empty: st.dataframe(style_table(cdf),use_container_width=True,height=520)
 with tab3:
     st.warning("Wichtig: Diese Liste verwendet Futures als Preis-Proxy für Edelmetalle, nicht den tatsächlichen Händlerpreis für Barren oder Münzen. Aufschläge, Lagerung und Kauf-/Verkaufspreise fehlen.")
     if "metals_df" not in st.session_state or st.button("Edelmetallrangliste aktualisieren",key="metal_scan"):
-        st.session_state.metals_df=get_table(PHYSICAL_METALS,"Physische Edelmetalle")
+        _base_metals=get_table(PHYSICAL_METALS,"Physische Edelmetalle")
+        _news_for_model, _ = cached_news()
+        st.session_state.metals_df=add_forecast(_base_metals, _news_for_model)
     mdf=st.session_state.get("metals_df",pd.DataFrame())
     if not mdf.empty:
         st.dataframe(style_table(mdf),use_container_width=True)
@@ -247,33 +301,42 @@ with tab4:
         except Exception as e: st.error(f"Risikoanalyse fehlgeschlagen: {e}")
 
 st.divider()
-st.header("🌍 Weltgeschehen: aktuelle Meldungen & anstehende Termine")
-st.write("Der News-Tab versucht Meldungen der letzten 48 Stunden aus mehreren institutionellen bzw. etablierten RSS-Quellen zu laden. Das ist keine vollständige Echtzeit-Erfassung aller Ereignisse; Feeds können ausfallen oder verspätet sein.")
-if feedparser is None: st.warning("Für Nachrichten bitte `feedparser` in requirements.txt installieren.")
-else:
-    if st.button("Nachrichten neu laden",key="news_refresh"): st.cache_data.clear()
-    @st.cache_data(ttl=300,show_spinner=False)
-    def cached_news(): return rss_news()
-    news, status=cached_news()
-    if status: st.caption(status)
-    if news.empty: st.warning("Keine aktuellen RSS-Meldungen abrufbar. Bitte später erneut versuchen.")
+if "show_news_panel" not in st.session_state:
+    st.session_state.show_news_panel = False
+if st.button("🌍 Hintergrundinformationen anzeigen / ausblenden", key="toggle_news_panel"):
+    st.session_state.show_news_panel = not st.session_state.show_news_panel
+
+if st.session_state.show_news_panel:
+    st.header("🌍 Hintergrundinformationen: aktuelle Meldungen")
+    st.write("Diese Meldungen sind zusätzlich zur Kursentwicklung ein Signal für die Modellschätzung. Die automatische Schlagwortauswertung ist einfach und kann Zusammenhänge falsch einordnen; sie ersetzt keine Prüfung durch Menschen.")
+    if st.button("Nachrichten neu laden",key="news_refresh"):
+        st.cache_data.clear()
+    news, status = cached_news()
+    if status:
+        st.caption(status)
+    if news.empty:
+        st.warning("Keine aktuellen RSS-Meldungen abrufbar. Feeds können ausfallen oder verspätet sein.")
     else:
-        st.caption(f"{len(news)} Meldungen aus erreichbaren Feeds · geprüft am {now.strftime('%d.%m.%Y %H:%M')} (Europe/Berlin)")
+        st.caption(f"{len(news)} Meldungen aus erreichbaren Feeds · Abrufzeit {now.strftime('%d.%m.%Y %H:%M')} (Europe/Berlin)")
         search=st.text_input("Nachrichten filtern",placeholder="z. B. Krieg, Zinsen, KI, Energie, Klima")
-        if search: news=news[news.apply(lambda row: search.lower() in (str(row.Meldung)+" "+str(row.Kurzinfo)+" "+str(row.Quelle)).lower(),axis=1)]
+        if search:
+            news=news[news.apply(lambda row: search.lower() in (str(row.Meldung)+" "+str(row.Kurzinfo)+" "+str(row.Quelle)).lower(),axis=1)]
         for _,r in news.head(50).iterrows():
             with st.container(border=True):
                 st.markdown(f"**{r['Meldung']}**")
                 st.caption(f"{r['Quelle']} · {r['Zeit (lokal)']}")
-                if r['Kurzinfo']: st.write(r['Kurzinfo'])
-                if r['Link']: st.markdown(f"[Originalquelle öffnen]({r['Link']})")
-        st.subheader("Termine in den nächsten 48 Stunden")
-        st.write("Die RSS-Feeds enthalten nicht immer strukturierte Kalenderdaten. Diese Liste zeigt nur eindeutig datierte Termine, die aus gelieferten Meldungen zuverlässig erkannt werden; wenn nichts erkannt wird, bedeutet das nicht, dass keine Termine stattfinden.")
-        # Conservatively surface only entries explicitly referring to upcoming scheduled events.
-        upcoming=re.compile(r"(tomorrow|next\s+(day|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|scheduled for|set to|will announce|due on|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|upcoming|expected to announce|is expected to)",re.I)
+                if r['Kurzinfo']:
+                    st.write(r['Kurzinfo'])
+                if r['Link']:
+                    st.markdown(f"[Originalquelle öffnen]({r['Link']})")
+        st.subheader("Angekündigte Ereignisse in den nächsten 48 Stunden")
+        st.write("RSS-Feeds enthalten nicht immer strukturierte Kalenderdaten. Diese Liste kann daher unvollständig sein.")
+        upcoming=re.compile(r"(tomorrow|next\s+(day|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|scheduled for|set to|will announce|due on|upcoming|expected to announce|ist angekündigt|morgen|soll .* bekanntgeben)",re.I)
         future=news[news.apply(lambda row: bool(upcoming.search(str(row.Meldung)+" "+str(row.Kurzinfo))),axis=1)]
-        if future.empty: st.info("In den abgerufenen Meldungen wurden keine eindeutig erkennbaren angekündigten Termine gefunden.")
-        else: st.dataframe(future[["Zeit (lokal)","Quelle","Meldung","Link"]].rename(columns={"Zeit (lokal":"Meldungszeit"}),use_container_width=True,hide_index=True)
+        if future.empty:
+            st.info("In den abgerufenen Meldungen wurden keine eindeutig erkennbaren angekündigten Termine gefunden.")
+        else:
+            st.dataframe(future[["Zeit (lokal)","Quelle","Meldung","Link"]],use_container_width=True,hide_index=True)
 
 st.divider()
 st.header("💡 10 gemischte Portfolio-Vorschläge")
