@@ -79,7 +79,7 @@ rows=[]; histories={}; fetch_times={}
 progress=st.progress(0, text='Lade historische Kursdaten …')
 items=list(selected.items())
 with ThreadPoolExecutor(max_workers=6) as ex:
-    futs={ex.submit(load_history,t,p): (t,n) for t,n in items}
+    futs={ex.submit(load_history,t,period): (t,n) for t,n in items}
     for i,f in enumerate(as_completed(futs),1):
         t,n=futs[f]
         try: df, fetched=f.result(); histories[t]=df; fetch_times[t]=fetched
