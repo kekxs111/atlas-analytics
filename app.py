@@ -162,125 +162,98 @@ display_df = get_table(active, universe_choice)
 
 # dedicated metals ranking: longest provider history available
 st.header("Ranglisten")
-tab1,tab2,tab3,tab4=st.tabs(["Aktien & ETFs / Gesamtmarkt","Rohstoffe","Physische Edelmetalle","Risiko & Portfolio"])
-with tab1:
-    st.write("Die Rangliste nutzt jeweils die **längste von der Datenquelle gelieferte Historie** (`period=max`). Die Score-Spalte ist eine vereinfachte Kennzahl, kein Kursziel.")
-    df=display_df
-    if not df.empty:
-        types=st.multiselect("Anlagearten anzeigen",sorted(df.Typ.unique()),default=sorted(df.Typ.unique()),key="typefilter")
-        view=df[df.Typ.isin(types)].copy()
-        st.dataframe(style_table(view),use_container_width=True,height=540)
-        pick=st.selectbox("Kursverlauf ansehen",view.Ticker.tolist(),key="chart_stock")
-        h=fetch_history(pick)
-        if not h.empty: st.plotly_chart(px.line(h.reset_index(),x=h.index.name or "Date",y="Close",title=f"{pick} – verfügbare Gesamthistorie"),use_container_width=True)
-    else: st.info("Für die ausgewählten Symbole sind derzeit keine ausreichenden Kursdaten abrufbar. Nutze bei Bedarf „Daten aktualisieren“.")
-with tab2:
-    st.write("Rohstoffe werden überwiegend über börsengehandelte Futures abgebildet. Futures können Rollverluste, Laufzeitunterschiede und besondere Risiken aufweisen.")
-    if "commodities_df" not in st.session_state:
-        st.session_state.commodities_df=get_table(COMMODITIES,"Rohstoffe")
-    cdf=st.session_state.get("commodities_df",pd.DataFrame())
-    if not cdf.empty: st.dataframe(style_table(cdf),use_container_width=True,height=520)
-with tab3:
-    st.warning("Wichtig: Diese Liste verwendet Futures als Preis-Proxy für Edelmetalle, nicht den tatsächlichen Händlerpreis für Barren oder Münzen. Aufschläge, Lagerung und Kauf-/Verkaufspreise fehlen.")
-    if "metals_df" not in st.session_state:
-        st.session_state.metals_df=get_table(PHYSICAL_METALS,"Physische Edelmetalle")
-    mdf=st.session_state.get("metals_df",pd.DataFrame())
-    if not mdf.empty:
-        st.dataframe(style_table(mdf),use_container_width=True)
-        mt=st.selectbox("Edelmetallkurs",mdf.Ticker.tolist(),key="metal_chart")
-        mh=fetch_history(mt)
-        if not mh.empty:
-            fig=go.Figure(); fig.add_trace(go.Scatter(x=mh.index,y=mh.Close,mode="lines",name=mt)); fig.update_layout(title=f"{mt} – längste verfügbare Kursgeschichte",xaxis_title="Datum",yaxis_title="Preis (notierungsabhängig)")
-            st.plotly_chart(fig,use_container_width=True)
-with tab4:
-    st.subheader("Portfolio-Risiko-Rechner")
-    st.write("Füge Ticker und Gewichte ein. Die Gewichte werden für die Rechnung auf 100 % normiert.")
-    default_port=pd.DataFrame({"Ticker":["SPY","TLT","GLD"],"Gewicht %":[50.0,30.0,20.0]})
-    port=st.data_editor(default_port,num_rows="dynamic",use_container_width=True,key="portfolio_editor")
-    conf=st.selectbox("VaR-Konfidenz",["95 %","99 %"]); days=st.slider("VaR-Haltedauer (Tage)",1,252,1)
-    mc_sims=st.select_slider("Monte-Carlo-Simulationen",options=[1000,2500,5000,10000],value=5000)
-    if st.button("Risiko berechnen",type="primary",key="risk_calc"):
-        try:
-            weights={str(r.Ticker).strip().upper():float(r["Gewicht %"])/100 for _,r in port.iterrows() if str(r.Ticker).strip() and pd.notna(r["Gewicht %"]) and float(r["Gewicht %"])>0}
-            if not weights: st.error("Bitte mindestens einen Ticker mit positivem Gewicht eingeben.")
-            else:
-                hist={t:fetch_history(t).Close.pct_change().dropna().tail(756) for t in weights}
-                rets=pd.concat(hist,axis=1).dropna(how="all").fillna(0)
-                valid=[t for t in weights if t in rets and rets[t].notna().sum()>20]
-                if not valid: st.error("Keine ausreichenden Kursdaten für die eingegebenen Ticker.")
-                else:
-                    w=np.array([weights[t] for t in valid],float); w=w/w.sum(); R=rets[valid].tail(756); cov=R.cov().values
-                    daily_var=float(w.T@cov@w); daily_sigma=math.sqrt(max(daily_var,0)); z=1.65 if conf=="95 %" else 2.33
-                    var=z*daily_sigma*money*math.sqrt(days)
-                    st.metric(f"Parametrischer VaR ({conf}, {days} Tag(e))",f"€ {var:,.2f}",help="Modellschätzung: bei gewähltem Konfidenzniveau wird der Verlust in diesem Modell in den meisten Fällen nicht überschritten; Extremverluste können größer sein.")
-                    st.metric("Geschätzte jährliche Volatilität",f"{daily_sigma*math.sqrt(252)*100:.2f}%")
-                    st.metric("Summe der Portfolio-Gewichte",f"{sum(weights[t] for t in valid)/sum(weights[t] for t in valid)*100:.0f}% (normiert)")
-                    corr=R.corr(); st.write("**Korrelationsmatrix** (niedrigere Korrelation kann Diversifikation ermöglichen)"); st.dataframe(corr.style.format("{:.2f}").background_gradient(axis=None),use_container_width=True)
-                    st.caption("Formel: σₚ² = wᵀΣw. Parametrischer VaR: z · σ · V · √t. Die Rechnung nutzt historische tägliche Renditen und setzt für den VaR eine näherungsweise Normalverteilung voraus.")
-                    # factor model using broad market proxy SPY and bond proxy TLT if present
-                    st.write("**Faktormodell (vereinfachtes Beispiel)**")
-                    factors={"Markt (SPY)":"SPY","Anleihen (TLT)":"TLT","Gold (GLD)":"GLD"}
-                    factor_returns={label:fetch_history(t).Close.pct_change().rename(label) for label,t in factors.items() if t not in valid and not fetch_history(t).empty}
-                    if factor_returns:
-                        fdf=pd.concat([R.mean(axis=1).rename("Portfolio").to_frame(),*factor_returns.values()],axis=1).dropna()
-                        if len(fdf)>30:
-                            y=fdf["Portfolio"].values; X=np.column_stack([np.ones(len(fdf)),fdf.drop(columns="Portfolio").values]); coef=np.linalg.lstsq(X,y,rcond=None)[0]
-                            st.dataframe(pd.DataFrame({"Faktor":["Alpha"]+list(fdf.columns[1:]),"Koeffizient":coef}),use_container_width=True)
-                    # Monte Carlo, using daily historical mean and covariance
-                    rng=np.random.default_rng(42); mu=R.mean().values; covm=R.cov().values
-                    try: sims=rng.multivariate_normal(mu,covm,size=(mc_sims,252),check_valid="ignore")
-                    except Exception: sims=rng.normal(mu,np.sqrt(np.maximum(np.diag(covm),1e-12)),size=(mc_sims,252,len(valid)))
-                    port_daily=np.einsum("s t a,a->s t",sims,w); terminal=money*np.exp(np.log1p(np.clip(port_daily,-.99,None)).sum(axis=1))
-                    st.write("**Monte-Carlo: simulierte Portfolio-Werte nach ungefähr einem Jahr**")
-                    mcdf=pd.DataFrame({"Portfolio-Wert (€)":terminal}); st.plotly_chart(px.histogram(mcdf,x="Portfolio-Wert (€)",nbins=50,title="Simulierte Endwerte (keine Prognose)"),use_container_width=True)
-                    q05=float(np.quantile(terminal,.05)); q50=float(np.quantile(terminal,.5)); q95=float(np.quantile(terminal,.95))
-                    st.write(f"5%-Quantil: **€ {q05:,.2f}** · Median: **€ {q50:,.2f}** · 95%-Quantil: **€ {q95:,.2f}**")
-                    st.caption("Monte-Carlo verwendet historische Mittelwerte/Kovarianzen. Ergebnisse hängen stark von Modellannahmen ab und sind keine Vorhersage.")
-                    # stress test: shocks on equity-like vs bond-like / commodity proxies
-                    shocks=[]
-                    for label,shock in [("Aktien −30 %",-.30),("Aktien +20 %",.20),("Zinsen +2 %-Punkte (Anleihen-Näherung)",None),("Gold −15 %",-.15),("Alle Anlagen −20 %",-.20)]:
-                        change=0.0
-                        for t,wi in zip(valid,w):
-                            if label.startswith("Aktien"):
-                                s=shock if t in {"SPY","VOO","QQQ","VTI","VT","ACWI","EUNL.DE","VWCE.DE","SXR8.DE"} else 0.0
-                            elif label.startswith("Zinsen"):
-                                dur=BOND_DURATION.get(t,0); s=-dur*.02 + .5*(dur**2)*(.02**2)*.25 if dur else 0
-                            elif label.startswith("Gold"): s=-.15 if t in {"GLD","IAU","GC=F"} else 0
-                            else: s=-.20
-                            change+=wi*s
-                        shocks.append({"Szenario":label,"Geschätzte Veränderung %":change*100,"Wert danach (€)":money*(1+change)})
-                    st.write("**Stresstest**"); st.dataframe(style_table(pd.DataFrame(shocks)),use_container_width=True)
-                    st.caption("Anleihen-Näherung: ΔP/P ≈ −Dₘₒd·Δy + ½·C·(Δy)². Durationen sind Näherungswerte je ETF; Konvexität ist hier grob modelliert. Für Nicht-Anleihen wird keine Duration angesetzt.")
-        except Exception as e: st.error(f"Risikoanalyse fehlgeschlagen: {e}")
-
+st.subheader("📈 Aktien & ETFs / Gesamtmarkt")
+st.write("Die Rangliste nutzt jeweils die **längste von der Datenquelle gelieferte Historie** (`period=max`). Die Score-Spalte ist eine vereinfachte Kennzahl, kein Kursziel.")
+df=display_df
+if not df.empty:
+    types=st.multiselect("Anlagearten anzeigen",sorted(df.Typ.unique()),default=sorted(df.Typ.unique()),key="typefilter")
+    view=df[df.Typ.isin(types)].copy()
+    st.dataframe(style_table(view),use_container_width=True,height=540)
+    pick=st.selectbox("Kursverlauf ansehen",view.Ticker.tolist(),key="chart_stock")
+    h=fetch_history(pick)
+    if not h.empty: st.plotly_chart(px.line(h.reset_index(),x=h.index.name or "Date",y="Close",title=f"{pick} – verfügbare Gesamthistorie"),use_container_width=True)
+else: st.info("Für die ausgewählten Symbole sind derzeit keine ausreichenden Kursdaten abrufbar. Nutze bei Bedarf „Daten aktualisieren“.")
 st.divider()
-st.header("🌍 Weltgeschehen: aktuelle Meldungen & anstehende Termine")
-st.write("Der News-Tab versucht Meldungen der letzten 48 Stunden aus mehreren institutionellen bzw. etablierten RSS-Quellen zu laden. Das ist keine vollständige Echtzeit-Erfassung aller Ereignisse; Feeds können ausfallen oder verspätet sein.")
-if feedparser is None: st.warning("Für Nachrichten bitte `feedparser` in requirements.txt installieren.")
-else:
-    if st.button("Nachrichten neu laden",key="news_refresh"): st.cache_data.clear()
-    @st.cache_data(ttl=300,show_spinner=False)
-    def cached_news(): return rss_news()
-    news, status=cached_news()
-    if status: st.caption(status)
-    if news.empty: st.warning("Keine aktuellen RSS-Meldungen abrufbar. Bitte später erneut versuchen.")
-    else:
-        st.caption(f"{len(news)} Meldungen aus erreichbaren Feeds · geprüft am {now.strftime('%d.%m.%Y %H:%M')} (Europe/Berlin)")
-        search=st.text_input("Nachrichten filtern",placeholder="z. B. Krieg, Zinsen, KI, Energie, Klima")
-        if search: news=news[news.apply(lambda row: search.lower() in (str(row.Meldung)+" "+str(row.Kurzinfo)+" "+str(row.Quelle)).lower(),axis=1)]
-        for _,r in news.head(50).iterrows():
-            with st.container(border=True):
-                st.markdown(f"**{r['Meldung']}**")
-                st.caption(f"{r['Quelle']} · {r['Zeit (lokal)']}")
-                if r['Kurzinfo']: st.write(r['Kurzinfo'])
-                if r['Link']: st.markdown(f"[Originalquelle öffnen]({r['Link']})")
-        st.subheader("Termine in den nächsten 48 Stunden")
-        st.write("Die RSS-Feeds enthalten nicht immer strukturierte Kalenderdaten. Diese Liste zeigt nur eindeutig datierte Termine, die aus gelieferten Meldungen zuverlässig erkannt werden; wenn nichts erkannt wird, bedeutet das nicht, dass keine Termine stattfinden.")
-        # Conservatively surface only entries explicitly referring to upcoming scheduled events.
-        upcoming=re.compile(r"(tomorrow|next\s+(day|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|scheduled for|set to|will announce|due on|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|upcoming|expected to announce|is expected to)",re.I)
-        future=news[news.apply(lambda row: bool(upcoming.search(str(row.Meldung)+" "+str(row.Kurzinfo))),axis=1)]
-        if future.empty: st.info("In den abgerufenen Meldungen wurden keine eindeutig erkennbaren angekündigten Termine gefunden.")
-        else: st.dataframe(future[["Zeit (lokal)","Quelle","Meldung","Link"]].rename(columns={"Zeit (lokal":"Meldungszeit"}),use_container_width=True,hide_index=True)
+st.subheader("🛢️ Rohstoffe")
+st.write("Rohstoffe werden überwiegend über börsengehandelte Futures abgebildet. Futures können Rollverluste, Laufzeitunterschiede und besondere Risiken aufweisen.")
+if "commodities_df" not in st.session_state:
+    st.session_state.commodities_df=get_table(COMMODITIES,"Rohstoffe")
+cdf=st.session_state.get("commodities_df",pd.DataFrame())
+if not cdf.empty: st.dataframe(style_table(cdf),use_container_width=True,height=520)
+st.divider()
+st.subheader("🥇 Physische Edelmetalle")
+st.warning("Wichtig: Diese Liste verwendet Futures als Preis-Proxy für Edelmetalle, nicht den tatsächlichen Händlerpreis für Barren oder Münzen. Aufschläge, Lagerung und Kauf-/Verkaufspreise fehlen.")
+if "metals_df" not in st.session_state:
+    st.session_state.metals_df=get_table(PHYSICAL_METALS,"Physische Edelmetalle")
+mdf=st.session_state.get("metals_df",pd.DataFrame())
+if not mdf.empty:
+    st.dataframe(style_table(mdf),use_container_width=True)
+    mt=st.selectbox("Edelmetallkurs",mdf.Ticker.tolist(),key="metal_chart")
+    mh=fetch_history(mt)
+    if not mh.empty:
+        fig=go.Figure(); fig.add_trace(go.Scatter(x=mh.index,y=mh.Close,mode="lines",name=mt)); fig.update_layout(title=f"{mt} – längste verfügbare Kursgeschichte",xaxis_title="Datum",yaxis_title="Preis (notierungsabhängig)")
+        st.plotly_chart(fig,use_container_width=True)
+st.divider()
+st.subheader("🧮 Risiko & Portfolio")
+st.subheader("Portfolio-Risiko-Rechner")
+st.write("Füge Ticker und Gewichte ein. Die Gewichte werden für die Rechnung auf 100 % normiert.")
+default_port=pd.DataFrame({"Ticker":["SPY","TLT","GLD"],"Gewicht %":[50.0,30.0,20.0]})
+port=st.data_editor(default_port,num_rows="dynamic",use_container_width=True,key="portfolio_editor")
+conf=st.selectbox("VaR-Konfidenz",["95 %","99 %"]); days=st.slider("VaR-Haltedauer (Tage)",1,252,1)
+mc_sims=st.select_slider("Monte-Carlo-Simulationen",options=[1000,2500,5000,10000],value=5000)
+if st.button("Risiko berechnen",type="primary",key="risk_calc"):
+    try:
+        weights={str(r.Ticker).strip().upper():float(r["Gewicht %"])/100 for _,r in port.iterrows() if str(r.Ticker).strip() and pd.notna(r["Gewicht %"]) and float(r["Gewicht %"])>0}
+        if not weights: st.error("Bitte mindestens einen Ticker mit positivem Gewicht eingeben.")
+        else:
+            hist={t:fetch_history(t).Close.pct_change().dropna().tail(756) for t in weights}
+            rets=pd.concat(hist,axis=1).dropna(how="all").fillna(0)
+            valid=[t for t in weights if t in rets and rets[t].notna().sum()>20]
+            if not valid: st.error("Keine ausreichenden Kursdaten für die eingegebenen Ticker.")
+            else:
+                w=np.array([weights[t] for t in valid],float); w=w/w.sum(); R=rets[valid].tail(756); cov=R.cov().values
+                daily_var=float(w.T@cov@w); daily_sigma=math.sqrt(max(daily_var,0)); z=1.65 if conf=="95 %" else 2.33
+                var=z*daily_sigma*money*math.sqrt(days)
+                st.metric(f"Parametrischer VaR ({conf}, {days} Tag(e))",f"€ {var:,.2f}",help="Modellschätzung: bei gewähltem Konfidenzniveau wird der Verlust in diesem Modell in den meisten Fällen nicht überschritten; Extremverluste können größer sein.")
+                st.metric("Geschätzte jährliche Volatilität",f"{daily_sigma*math.sqrt(252)*100:.2f}%")
+                st.metric("Summe der Portfolio-Gewichte",f"{sum(weights[t] for t in valid)/sum(weights[t] for t in valid)*100:.0f}% (normiert)")
+                corr=R.corr(); st.write("**Korrelationsmatrix** (niedrigere Korrelation kann Diversifikation ermöglichen)"); st.dataframe(corr.style.format("{:.2f}").background_gradient(axis=None),use_container_width=True)
+                st.caption("Formel: σₚ² = wᵀΣw. Parametrischer VaR: z · σ · V · √t. Die Rechnung nutzt historische tägliche Renditen und setzt für den VaR eine näherungsweise Normalverteilung voraus.")
+                # factor model using broad market proxy SPY and bond proxy TLT if present
+                st.write("**Faktormodell (vereinfachtes Beispiel)**")
+                factors={"Markt (SPY)":"SPY","Anleihen (TLT)":"TLT","Gold (GLD)":"GLD"}
+                factor_returns={label:fetch_history(t).Close.pct_change().rename(label) for label,t in factors.items() if t not in valid and not fetch_history(t).empty}
+                if factor_returns:
+                    fdf=pd.concat([R.mean(axis=1).rename("Portfolio").to_frame(),*factor_returns.values()],axis=1).dropna()
+                    if len(fdf)>30:
+                        y=fdf["Portfolio"].values; X=np.column_stack([np.ones(len(fdf)),fdf.drop(columns="Portfolio").values]); coef=np.linalg.lstsq(X,y,rcond=None)[0]
+                        st.dataframe(pd.DataFrame({"Faktor":["Alpha"]+list(fdf.columns[1:]),"Koeffizient":coef}),use_container_width=True)
+                # Monte Carlo, using daily historical mean and covariance
+                rng=np.random.default_rng(42); mu=R.mean().values; covm=R.cov().values
+                try: sims=rng.multivariate_normal(mu,covm,size=(mc_sims,252),check_valid="ignore")
+                except Exception: sims=rng.normal(mu,np.sqrt(np.maximum(np.diag(covm),1e-12)),size=(mc_sims,252,len(valid)))
+                port_daily=np.einsum("s t a,a->s t",sims,w); terminal=money*np.exp(np.log1p(np.clip(port_daily,-.99,None)).sum(axis=1))
+                st.write("**Monte-Carlo: simulierte Portfolio-Werte nach ungefähr einem Jahr**")
+                mcdf=pd.DataFrame({"Portfolio-Wert (€)":terminal}); st.plotly_chart(px.histogram(mcdf,x="Portfolio-Wert (€)",nbins=50,title="Simulierte Endwerte (keine Prognose)"),use_container_width=True)
+                q05=float(np.quantile(terminal,.05)); q50=float(np.quantile(terminal,.5)); q95=float(np.quantile(terminal,.95))
+                st.write(f"5%-Quantil: **€ {q05:,.2f}** · Median: **€ {q50:,.2f}** · 95%-Quantil: **€ {q95:,.2f}**")
+                st.caption("Monte-Carlo verwendet historische Mittelwerte/Kovarianzen. Ergebnisse hängen stark von Modellannahmen ab und sind keine Vorhersage.")
+                # stress test: shocks on equity-like vs bond-like / commodity proxies
+                shocks=[]
+                for label,shock in [("Aktien −30 %",-.30),("Aktien +20 %",.20),("Zinsen +2 %-Punkte (Anleihen-Näherung)",None),("Gold −15 %",-.15),("Alle Anlagen −20 %",-.20)]:
+                    change=0.0
+                    for t,wi in zip(valid,w):
+                        if label.startswith("Aktien"):
+                            s=shock if t in {"SPY","VOO","QQQ","VTI","VT","ACWI","EUNL.DE","VWCE.DE","SXR8.DE"} else 0.0
+                        elif label.startswith("Zinsen"):
+                            dur=BOND_DURATION.get(t,0); s=-dur*.02 + .5*(dur**2)*(.02**2)*.25 if dur else 0
+                        elif label.startswith("Gold"): s=-.15 if t in {"GLD","IAU","GC=F"} else 0
+                        else: s=-.20
+                        change+=wi*s
+                    shocks.append({"Szenario":label,"Geschätzte Veränderung %":change*100,"Wert danach (€)":money*(1+change)})
+                st.write("**Stresstest**"); st.dataframe(style_table(pd.DataFrame(shocks)),use_container_width=True)
+                st.caption("Anleihen-Näherung: ΔP/P ≈ −Dₘₒd·Δy + ½·C·(Δy)². Durationen sind Näherungswerte je ETF; Konvexität ist hier grob modelliert. Für Nicht-Anleihen wird keine Duration angesetzt.")
+    except Exception as e: st.error(f"Risikoanalyse fehlgeschlagen: {e}")
 
 st.divider()
 st.header("💡 10 gemischte Portfolio-Vorschläge")
@@ -364,4 +337,34 @@ if not idea_source.empty:
 else:
     st.info("Die zehn gemischten Vorschläge konnten nicht erstellt werden, weil aktuell zu wenige Kursreihen verfügbar sind. Bitte später Daten aktualisieren.")
 
+
+st.header("🌍 Weltgeschehen: aktuelle Meldungen & anstehende Termine")
+st.write("Der News-Tab versucht Meldungen der letzten 48 Stunden aus mehreren institutionellen bzw. etablierten RSS-Quellen zu laden. Das ist keine vollständige Echtzeit-Erfassung aller Ereignisse; Feeds können ausfallen oder verspätet sein.")
+if feedparser is None: st.warning("Für Nachrichten bitte `feedparser` in requirements.txt installieren.")
+else:
+    if st.button("Nachrichten neu laden",key="news_refresh"): st.cache_data.clear()
+    @st.cache_data(ttl=300,show_spinner=False)
+    def cached_news(): return rss_news()
+    news, status=cached_news()
+    if status: st.caption(status)
+    if news.empty: st.warning("Keine aktuellen RSS-Meldungen abrufbar. Bitte später erneut versuchen.")
+    else:
+        st.caption(f"{len(news)} Meldungen aus erreichbaren Feeds · geprüft am {now.strftime('%d.%m.%Y %H:%M')} (Europe/Berlin)")
+        search=st.text_input("Nachrichten filtern",placeholder="z. B. Krieg, Zinsen, KI, Energie, Klima")
+        if search: news=news[news.apply(lambda row: search.lower() in (str(row.Meldung)+" "+str(row.Kurzinfo)+" "+str(row.Quelle)).lower(),axis=1)]
+        for _,r in news.head(50).iterrows():
+            with st.container(border=True):
+                st.markdown(f"**{r['Meldung']}**")
+                st.caption(f"{r['Quelle']} · {r['Zeit (lokal)']}")
+                if r['Kurzinfo']: st.write(r['Kurzinfo'])
+                if r['Link']: st.markdown(f"[Originalquelle öffnen]({r['Link']})")
+        st.subheader("Termine in den nächsten 48 Stunden")
+        st.write("Die RSS-Feeds enthalten nicht immer strukturierte Kalenderdaten. Diese Liste zeigt nur eindeutig datierte Termine, die aus gelieferten Meldungen zuverlässig erkannt werden; wenn nichts erkannt wird, bedeutet das nicht, dass keine Termine stattfinden.")
+        # Conservatively surface only entries explicitly referring to upcoming scheduled events.
+        upcoming=re.compile(r"(tomorrow|next\s+(day|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|scheduled for|set to|will announce|due on|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|upcoming|expected to announce|is expected to)",re.I)
+        future=news[news.apply(lambda row: bool(upcoming.search(str(row.Meldung)+" "+str(row.Kurzinfo))),axis=1)]
+        if future.empty: st.info("In den abgerufenen Meldungen wurden keine eindeutig erkennbaren angekündigten Termine gefunden.")
+        else: st.dataframe(future[["Zeit (lokal)","Quelle","Meldung","Link"]].rename(columns={"Zeit (lokal":"Meldungszeit"}),use_container_width=True,hide_index=True)
+
+st.divider()
 st.caption("Datenhinweis: Yahoo Finance kann verspätete, unvollständige oder fehlerhafte Daten liefern. Kursreihen unterschiedlicher Instrumente beginnen zu unterschiedlichen Zeitpunkten. Futures und ETFs sind nicht identisch mit dem physischen Rohstoff. Alle Scores und Szenarien sind vereinfachte Modellwerte und keine Kaufempfehlung.")
