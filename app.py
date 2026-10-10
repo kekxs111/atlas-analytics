@@ -139,10 +139,22 @@ with st.sidebar:
     st.caption("Kursdaten: Yahoo Finance, Aktualisierungscache 15 Minuten. Verfügbarkeit und Historie unterscheiden sich je Ticker.")
     st.divider()
     st.subheader("Investment-Szenario")
-    money=st.number_input("Anlagebetrag (€)", min_value=10.0, max_value=10_000_000.0, value=1000.0, step=100.0)
-    horizon=st.select_slider("Anlagezeitraum", options=["1 Monat","3 Monate","6 Monate","1 Jahr","3 Jahre","5 Jahre","10 Jahre"], value="5 Jahre")
-    risk_pref=st.selectbox("Gewünschtes Risiko",["Niedrig","Mittel","Hoch","Alle"],index=1)
-    growth_pref=st.selectbox("Wachstumsziel",["Stabil","Ausgewogen","Hoch","Maximal"],index=1)
+    money=st.number_input("Anlagebetrag (€)", min_value=10.0, max_value=10_000_000.0, value=1000.0, step=100.0, key="scenario_money")
+    horizon=st.select_slider("Anlagezeitraum", options=["1 Monat","3 Monate","6 Monate","1 Jahr","3 Jahre","5 Jahre","10 Jahre"], value="5 Jahre", key="scenario_horizon")
+    risk_pref=st.selectbox("Gewünschtes Risiko",["Niedrig","Mittel","Hoch","Alle"],index=1,key="scenario_risk")
+    growth_pref=st.selectbox("Wachstumsziel",["Stabil","Ausgewogen","Hoch","Maximal"],index=1,key="scenario_growth")
+    # Keep the ten suggestions unchanged until the user explicitly applies the scenario.
+    if "applied_scenario" not in st.session_state:
+        st.session_state.applied_scenario = {"money": 1000.0, "horizon": "5 Jahre", "risk": "Mittel", "growth": "Ausgewogen"}
+    if st.button("Auf 10 Vorschläge anwenden", type="primary", key="apply_scenario_to_suggestions"):
+        st.session_state.applied_scenario = {"money": float(money), "horizon": horizon, "risk": risk_pref, "growth": growth_pref}
+        st.rerun()
+    applied_scenario = st.session_state.applied_scenario
+    applied_money = float(applied_scenario["money"])
+    applied_horizon = applied_scenario["horizon"]
+    applied_risk = applied_scenario["risk"]
+    applied_growth = applied_scenario["growth"]
+    st.caption(f"Zuletzt angewendet: {applied_money:,.2f} € · {applied_horizon} · Risiko {applied_risk} · Wachstum {applied_growth}.")
     st.caption("Vorschläge sind datenbasierte Beispiele, keine persönliche Finanzberatung oder Garantie.")
 
 # Main universe
@@ -284,8 +296,8 @@ if not idea_source.empty:
     # User's amount, risk preference, growth goal and horizon influence all ten model proposals.
     risk_order=["Niedrig","Mittel","Hoch"]
     growth_order=["Stabil","Ausgewogen","Hoch","Maximal"]
-    risk_base={"Niedrig":0,"Mittel":1,"Hoch":2,"Alle":1}[risk_pref]
-    growth_base={"Stabil":0,"Ausgewogen":1,"Hoch":2,"Maximal":3}[growth_pref]
+    risk_base={"Niedrig":0,"Mittel":1,"Hoch":2,"Alle":1}[applied_risk]
+    growth_base={"Stabil":0,"Ausgewogen":1,"Hoch":2,"Maximal":3}[applied_growth]
     profile_specs=[
       ("Defensiv gemischt",-1,-1,.50,.30,.20),
       ("Ausgewogen global",0,0,.45,.40,.15),
@@ -340,9 +352,9 @@ if not idea_source.empty:
         st.dataframe(style_table(detail.drop(columns=["Portfolio"])),use_container_width=True,hide_index=True)
         st.write("**Beispielhafte Aufteilung deines Anlagebetrags**")
         allocation=detail[["Anlage","Ticker","Typ","Gewicht %"]].copy()
-        allocation["Betrag (€)"]=allocation["Gewicht %"]*money/100
+        allocation["Betrag (€)"]=allocation["Gewicht %"]*applied_money/100
         st.dataframe(allocation.style.format({"Gewicht %":"{:.1f}%","Betrag (€)":"€ {:,.2f}"}),use_container_width=True,hide_index=True)
-        st.caption(f"Zeitraum-Auswahl: {horizon}. Die Vorschläge berücksichtigen dein Risikoprofil ({risk_pref}), Wachstumsziel ({growth_pref}) und den Anlagebetrag von € {money:,.2f}. Modellaufteilung, keine garantierte Rendite. Gebühren, Steuern, Währung und zukünftige Verluste sind nicht berücksichtigt.")
+        st.caption(f"Angewendete Einstellungen: {applied_horizon}, Risiko {applied_risk}, Wachstumsziel {applied_growth}, Betrag € {applied_money:,.2f}. Modellaufteilung, keine garantierte Rendite. Gebühren, Steuern, Währung und zukünftige Verluste sind nicht berücksichtigt.")
         # Automatic Monte Carlo for the selected suggested portfolio; no button required.
         with st.spinner("Monte-Carlo-Simulation für den ausgewählten Vorschlag läuft …"):
             try:
@@ -354,7 +366,7 @@ if not idea_source.empty:
                     hist_df=hist_df.reindex(columns=tickers).fillna(0.0)
                     mu=hist_df.mean().values; cov=hist_df.cov().values
                     rng=np.random.default_rng(2026)
-                    sim_days={"1 Monat":21,"3 Monate":63,"6 Monate":126,"1 Jahr":252,"3 Jahre":756,"5 Jahre":1260,"10 Jahre":2520}.get(horizon,252)
+                    sim_days={"1 Monat":21,"3 Monate":63,"6 Monate":126,"1 Jahr":252,"3 Jahre":756,"5 Jahre":1260,"10 Jahre":2520}.get(applied_horizon,252)
                     sim_count=1000
                     # Chunk simulations to keep memory use reasonable for long horizons.
                     ending_parts=[]
@@ -365,14 +377,14 @@ if not idea_source.empty:
                         except Exception:
                             simulated=rng.normal(mu,np.sqrt(np.maximum(np.diag(cov),1e-12)),size=(batch,sim_days,len(tickers)))
                         port_returns=np.einsum("sta,a->st",simulated,weights)
-                        ending_parts.extend((money*np.exp(np.log1p(np.clip(port_returns,-.99,None)).sum(axis=1))).tolist())
+                        ending_parts.extend((applied_money*np.exp(np.log1p(np.clip(port_returns,-.99,None)).sum(axis=1))).tolist())
                     ending=np.asarray(ending_parts)
                     q05,q50,q95=np.quantile(ending,[.05,.50,.95])
                     c1,c2,c3=st.columns(3)
                     c1.metric("Monte-Carlo · schlechtes Szenario (5 %)",f"€ {q05:,.0f}")
                     c2.metric("Median-Szenario",f"€ {q50:,.0f}")
                     c3.metric("Gutes Szenario (95 %)",f"€ {q95:,.0f}")
-                    st.plotly_chart(px.histogram(pd.DataFrame({"Simulierter Endwert (€)":ending}),x="Simulierter Endwert (€)",nbins=40,title=f"Automatische Monte-Carlo-Simulation · {horizon} · {sim_count:,} Pfade"),use_container_width=True)
+                    st.plotly_chart(px.histogram(pd.DataFrame({"Simulierter Endwert (€)":ending}),x="Simulierter Endwert (€)",nbins=40,title=f"Automatische Monte-Carlo-Simulation · {applied_horizon} · {sim_count:,} Pfade"),use_container_width=True)
                     st.caption("Die Simulation nutzt historische Durchschnittsrenditen und Kovarianzen. Sie ist eine Modellspanne, keine verlässliche Vorhersage; bei langen Zeiträumen steigt die Unsicherheit erheblich.")
                 else:
                     st.info("Für die automatische Monte-Carlo-Simulation sind derzeit nicht genügend gemeinsame historische Kursdaten verfügbar.")
