@@ -200,7 +200,7 @@ st.write("Füge Ticker und Gewichte ein. Die Gewichte werden für die Rechnung a
 default_port=pd.DataFrame({"Ticker":["SPY","TLT","GLD"],"Gewicht %":[50.0,30.0,20.0]})
 port=st.data_editor(default_port,num_rows="dynamic",use_container_width=True,key="portfolio_editor")
 conf=st.selectbox("VaR-Konfidenz",["95 %","99 %"]); days=st.slider("VaR-Haltedauer (Tage)",1,252,1)
-mc_sims=st.select_slider("Monte-Carlo-Simulationen",options=[1000,2500,5000,10000],value=5000)
+mc_sims=5000  # Monte-Carlo-Simulationen laufen automatisch bei jeder Portfolio-Änderung
 if st.button("Risiko berechnen",type="primary",key="risk_calc"):
     try:
         weights={str(r.Ticker).strip().upper():float(r["Gewicht %"])/100 for _,r in port.iterrows() if str(r.Ticker).strip() and pd.notna(r["Gewicht %"]) and float(r["Gewicht %"])>0}
@@ -281,18 +281,27 @@ if not idea_source.empty:
     med_pool=eligible[eligible["Risiko"].isin(["Niedrig","Mittel"])]
     if med_pool.empty: med_pool=eligible
     portfolios=[]
-    profiles=[
-      ("Defensiv gemischt","Niedrig","Stabil",.55,.25,.20),
-      ("Ausgewogen global","Mittel","Ausgewogen",.45,.40,.15),
-      ("Weltweite Qualität","Mittel","Ausgewogen",.50,.40,.10),
-      ("Technologie & Weltmarkt","Hoch","Hoch",.55,.35,.10),
-      ("Dividenden & Stabilität","Niedrig","Stabil",.35,.55,.10),
-      ("Wachstum global","Hoch","Hoch",.60,.30,.10),
-      ("Rohstoff-Beimischung","Mittel","Ausgewogen",.40,.35,.25),
-      ("USA + Europa + Asien","Mittel","Ausgewogen",.50,.40,.10),
-      ("Dynamisches Wachstum","Hoch","Maximal",.65,.25,.10),
-      ("Maximales historisches Wachstum","Hoch","Maximal",.70,.20,.10),
+    # User's amount, risk preference, growth goal and horizon influence all ten model proposals.
+    risk_order=["Niedrig","Mittel","Hoch"]
+    growth_order=["Stabil","Ausgewogen","Hoch","Maximal"]
+    risk_base={"Niedrig":0,"Mittel":1,"Hoch":2,"Alle":1}[risk_pref]
+    growth_base={"Stabil":0,"Ausgewogen":1,"Hoch":2,"Maximal":3}[growth_pref]
+    profile_specs=[
+      ("Defensiv gemischt",-1,-1,.50,.30,.20),
+      ("Ausgewogen global",0,0,.45,.40,.15),
+      ("Weltweite Qualität",0,-1,.45,.45,.10),
+      ("Technologie & Weltmarkt",1,1,.55,.35,.10),
+      ("Dividenden & Stabilität",-1,-1,.30,.60,.10),
+      ("Wachstum global",1,1,.60,.30,.10),
+      ("Rohstoff-Beimischung",0,0,.40,.35,.25),
+      ("USA + Europa + Asien",0,0,.50,.40,.10),
+      ("Dynamisches Wachstum",1,2,.65,.25,.10),
+      ("Maximales historisches Wachstum",2,2,.70,.20,.10),
     ]
+    profiles=[]
+    for label,rd,gd,sw,ew,cw in profile_specs:
+        ri=min(2,max(0,risk_base+rd)); gi=min(3,max(0,growth_base+gd))
+        profiles.append((label,risk_order[ri],growth_order[gi],sw,ew,cw))
     for idx,(label,risk,growth,sw,ew,cw) in enumerate(profiles,1):
         pool=eligible.copy()
         if risk=="Niedrig": pool=pool[pool.Risiko=="Niedrig"]
@@ -333,7 +342,42 @@ if not idea_source.empty:
         allocation=detail[["Anlage","Ticker","Typ","Gewicht %"]].copy()
         allocation["Betrag (€)"]=allocation["Gewicht %"]*money/100
         st.dataframe(allocation.style.format({"Gewicht %":"{:.1f}%","Betrag (€)":"€ {:,.2f}"}),use_container_width=True,hide_index=True)
-        st.caption(f"Zeitraum-Auswahl: {horizon}. Die Tabelle zeigt eine Modellaufteilung, keine garantierte Rendite. Gebühren, Steuern, Währung und zukünftige Verluste sind nicht berücksichtigt.")
+        st.caption(f"Zeitraum-Auswahl: {horizon}. Die Vorschläge berücksichtigen dein Risikoprofil ({risk_pref}), Wachstumsziel ({growth_pref}) und den Anlagebetrag von € {money:,.2f}. Modellaufteilung, keine garantierte Rendite. Gebühren, Steuern, Währung und zukünftige Verluste sind nicht berücksichtigt.")
+        # Automatic Monte Carlo for the selected suggested portfolio; no button required.
+        with st.spinner("Monte-Carlo-Simulation für den ausgewählten Vorschlag läuft …"):
+            try:
+                tickers=detail.Ticker.astype(str).tolist()
+                hist_parts={t:fetch_history(t).Close.pct_change().dropna().tail(756).rename(t) for t in tickers}
+                hist_df=pd.concat(hist_parts.values(),axis=1).dropna(how="all").tail(756)
+                weights=np.array(detail["Gewicht %"].astype(float).values/100.0)
+                if not hist_df.empty and len(hist_df)>30:
+                    hist_df=hist_df.reindex(columns=tickers).fillna(0.0)
+                    mu=hist_df.mean().values; cov=hist_df.cov().values
+                    rng=np.random.default_rng(2026)
+                    sim_days={"1 Monat":21,"3 Monate":63,"6 Monate":126,"1 Jahr":252,"3 Jahre":756,"5 Jahre":1260,"10 Jahre":2520}.get(horizon,252)
+                    sim_count=1000
+                    # Chunk simulations to keep memory use reasonable for long horizons.
+                    ending_parts=[]
+                    for start in range(0,sim_count,100):
+                        batch=min(100,sim_count-start)
+                        try:
+                            simulated=rng.multivariate_normal(mu,cov,size=(batch,sim_days),check_valid="ignore")
+                        except Exception:
+                            simulated=rng.normal(mu,np.sqrt(np.maximum(np.diag(cov),1e-12)),size=(batch,sim_days,len(tickers)))
+                        port_returns=np.einsum("sta,a->st",simulated,weights)
+                        ending_parts.extend((money*np.exp(np.log1p(np.clip(port_returns,-.99,None)).sum(axis=1))).tolist())
+                    ending=np.asarray(ending_parts)
+                    q05,q50,q95=np.quantile(ending,[.05,.50,.95])
+                    c1,c2,c3=st.columns(3)
+                    c1.metric("Monte-Carlo · schlechtes Szenario (5 %)",f"€ {q05:,.0f}")
+                    c2.metric("Median-Szenario",f"€ {q50:,.0f}")
+                    c3.metric("Gutes Szenario (95 %)",f"€ {q95:,.0f}")
+                    st.plotly_chart(px.histogram(pd.DataFrame({"Simulierter Endwert (€)":ending}),x="Simulierter Endwert (€)",nbins=40,title=f"Automatische Monte-Carlo-Simulation · {horizon} · {sim_count:,} Pfade"),use_container_width=True)
+                    st.caption("Die Simulation nutzt historische Durchschnittsrenditen und Kovarianzen. Sie ist eine Modellspanne, keine verlässliche Vorhersage; bei langen Zeiträumen steigt die Unsicherheit erheblich.")
+                else:
+                    st.info("Für die automatische Monte-Carlo-Simulation sind derzeit nicht genügend gemeinsame historische Kursdaten verfügbar.")
+            except Exception as mc_error:
+                st.warning(f"Automatische Monte-Carlo-Simulation derzeit nicht verfügbar: {mc_error}")
 else:
     st.info("Die zehn gemischten Vorschläge konnten nicht erstellt werden, weil aktuell zu wenige Kursreihen verfügbar sind. Bitte später Daten aktualisieren.")
 
