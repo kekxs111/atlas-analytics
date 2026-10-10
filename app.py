@@ -145,7 +145,7 @@ with st.spinner("Lade Marktübersichten …"):
     elif universe_choice=="ETFs": active={**ETFS}
     elif universe_choice=="Rohstoffe": active={**COMMODITIES}
     else: active=all_universe
-    st.info(f"Aktuelle Auswahl: {len(active)} Symbole. Ein vollständiger Scan aller weltweit gelisteten Wertpapiere ist mit kostenlosen Quellen nicht zuverlässig möglich; diese Liste deckt viele große Märkte und Kategorien ab.")
+    st.caption(f"Auswahl: {len(active)} Symbole. Kostenlose Datenquellen decken nicht zuverlässig jedes weltweit gelistete Wertpapier ab.")
     scan=st.button("📊 Ranglisten laden", type="primary")
 
 # Avoid fetching hundreds of symbols just by opening the page; cache results once requested.
@@ -276,47 +276,86 @@ else:
         else: st.dataframe(future[["Zeit (lokal)","Quelle","Meldung","Link"]].rename(columns={"Zeit (lokal":"Meldungszeit"}),use_container_width=True,hide_index=True)
 
 st.divider()
-st.header("💡 10 Anlageideen nach Risiko und Wachstumsziel")
-st.write("Die Liste wird aus aktuell geladenen Kursdaten gewählt. Die Kategorien sind illustrative Filter, keine Garantie für Sicherheit oder maximale Rendite.")
-# Use available loaded table first, otherwise load a moderate sample for ideas.
-idea_source=st.session_state.atlas_tables.get(universe_choice,pd.DataFrame())
-if idea_source.empty:
-    with st.expander("Anlageideen jetzt berechnen (lädt eine größere Auswahl)"):
-        if st.button("10 Vorschläge berechnen",key="ideas_load"):
-            sample={**{k:STOCKS[k] for k in list(STOCKS)[:45]},**{k:ETFS[k] for k in list(ETFS)[:25]},**COMMODITIES}
-            st.session_state.idea_df=get_table(sample,"Ideen")
-            st.rerun()
-    idea_source=st.session_state.get("idea_df",pd.DataFrame())
+st.header("💡 10 gemischte Portfolio-Vorschläge")
+st.write("Jeder Vorschlag besteht aus mehreren Anlagearten – zum Beispiel Aktien, ETFs und gegebenenfalls Rohstoffen. Die Gewichte werden auf 100 % verteilt. Das sind Modellportfolios, keine persönlichen Kaufempfehlungen.")
+if st.button("🧩 10 gemischte Vorschläge berechnen", key="ideas_load", type="primary"):
+    # Pull a diversified sample from every category, regardless of the selected ranking tab.
+    sample = {}
+    for group in (STOCKS, ETFS, COMMODITIES):
+        sample.update(dict(list(group.items())))
+    with st.spinner("Lade lange Kursreihen für gemischte Portfolios …"):
+        frames=[]
+        progress=st.progress(0.0, text="Analysiere Aktien, ETFs und Rohstoffe …")
+        for i,(ticker,name) in enumerate(sample.items()):
+            row=metrics(ticker,name, "Aktie" if ticker in STOCKS else "ETF" if ticker in ETFS else "Rohstoff")
+            if row: frames.append(row)
+            progress.progress((i+1)/len(sample), text=f"Prüfe {ticker} ({i+1}/{len(sample)})")
+        progress.empty()
+        st.session_state.idea_universe_df=pd.DataFrame(frames)
+        st.session_state.idea_df=st.session_state.idea_universe_df.copy()
+
+idea_source=st.session_state.get("idea_universe_df", pd.DataFrame())
 if not idea_source.empty:
     eligible=idea_source.copy()
-    if risk_pref!="Alle":
-        allowed={"Niedrig":["Niedrig"],"Mittel":["Niedrig","Mittel"],"Hoch":["Niedrig","Mittel","Hoch"]}[risk_pref]
-        eligible=eligible[eligible.Risiko.isin(allowed)]
-    if growth_pref=="Stabil": eligible=eligible.sort_values(["Volatilität %","Score"],ascending=[True,False])
-    elif growth_pref=="Ausgewogen": eligible=eligible.sort_values("Score",ascending=False)
-    elif growth_pref=="Hoch": eligible=eligible.sort_values(["Rendite p.a. %","Score"],ascending=False)
-    else: eligible=eligible.sort_values(["1J Rendite %","Rendite p.a. %"],ascending=False)
-    chosen=eligible.head(10).copy()
-    if not chosen.empty:
-        chosen.insert(0,"Vorschlag",range(1,len(chosen)+1))
-        st.dataframe(style_table(chosen),use_container_width=True)
-        st.subheader("Zwei hervorgehobene Strategien")
-        c1,c2=st.columns(2)
-        low=idea_source.sort_values(["Volatilität %","Max. Verlustphase %"],ascending=[True,False]).head(1)
-        high=idea_source.sort_values(["Rendite p.a. %","Score"],ascending=False).head(1)
-        with c1:
-            st.markdown("**Empfehlung für vergleichsweise ruhigeres Wachstum**")
-            if not low.empty:
-                x=low.iloc[0]; st.write(f"{x['Anlage']} (`{x['Ticker']}`) · historische Volatilität {x['Volatilität %']:.1f}% · Score {x['Score']:.1f}")
-                st.caption("‘Ruhiger’ heißt nicht sicher: Verluste bleiben möglich, und vergangene Schwankungen können sich ändern.")
-        with c2:
-            st.markdown("**Empfehlung für maximales historisches Wachstum**")
-            if not high.empty:
-                x=high.iloc[0]; st.write(f"{x['Anlage']} (`{x['Ticker']}`) · Rendite p.a. seit verfügbarer Historie {x['Rendite p.a. %']:.1f}% · Score {x['Score']:.1f}")
-                st.caption("Hohe vergangene Rendite kann mit sehr hohen Verlusten einhergehen. Das ist keine Vorhersage.")
-        st.write(f"**Szenario:** € {money:,.2f} über {horizon}. Der Betrag und Zeitraum dienen zur Einordnung; ohne Gebühren, Steuern, Inflation und künftige Renditen lässt sich kein verlässlicher Endwert versprechen.")
-    else: st.warning("Mit diesen Risiko-/Wachstumseinstellungen wurden keine passenden Instrumente gefunden. Ändere die Auswahl.")
+    # Use different category mixes in each model portfolio; avoid single-security 'portfolios'.
+    low_pool=eligible[eligible["Risiko"]=="Niedrig"]
+    med_pool=eligible[eligible["Risiko"].isin(["Niedrig","Mittel"])]
+    if med_pool.empty: med_pool=eligible
+    portfolios=[]
+    profiles=[
+      ("Defensiv gemischt","Niedrig","Stabil",.55,.25,.20),
+      ("Ausgewogen global","Mittel","Ausgewogen",.45,.40,.15),
+      ("Weltweite Qualität","Mittel","Ausgewogen",.50,.40,.10),
+      ("Technologie & Weltmarkt","Hoch","Hoch",.55,.35,.10),
+      ("Dividenden & Stabilität","Niedrig","Stabil",.35,.55,.10),
+      ("Wachstum global","Hoch","Hoch",.60,.30,.10),
+      ("Rohstoff-Beimischung","Mittel","Ausgewogen",.40,.35,.25),
+      ("USA + Europa + Asien","Mittel","Ausgewogen",.50,.40,.10),
+      ("Dynamisches Wachstum","Hoch","Maximal",.65,.25,.10),
+      ("Maximales historisches Wachstum","Hoch","Maximal",.70,.20,.10),
+    ]
+    for idx,(label,risk,growth,sw,ew,cw) in enumerate(profiles,1):
+        pool=eligible.copy()
+        if risk=="Niedrig": pool=pool[pool.Risiko=="Niedrig"]
+        elif risk=="Mittel": pool=pool[pool.Risiko.isin(["Niedrig","Mittel"])]
+        if pool.empty: pool=eligible.copy()
+        # Select multiple assets per category; rank by profile but diversify names.
+        if growth=="Stabil": pool=pool.sort_values(["Volatilität %","Max. Verlustphase %"],ascending=[True,False])
+        elif growth=="Ausgewogen": pool=pool.sort_values("Score",ascending=False)
+        elif growth=="Hoch": pool=pool.sort_values(["Rendite p.a. %","Score"],ascending=False)
+        else: pool=pool.sort_values(["1J Rendite %","Score"],ascending=False)
+        stocks_pool=pool[pool.Typ=="Aktie"].head(3)
+        etf_pool=pool[pool.Typ=="ETF"].head(3)
+        comm_pool=pool[pool.Typ=="Rohstoff"].head(2)
+        # If risk filtering removed a category, restore candidates from the full set.
+        if len(stocks_pool)<2: stocks_pool=eligible[eligible.Typ=="Aktie"].sort_values("Score",ascending=False).head(3)
+        if len(etf_pool)<2: etf_pool=eligible[eligible.Typ=="ETF"].sort_values("Score",ascending=False).head(3)
+        if len(comm_pool)<1: comm_pool=eligible[eligible.Typ=="Rohstoff"].sort_values("Score",ascending=False).head(1)
+        groups=[(stocks_pool,sw),(etf_pool,ew),(comm_pool,cw)]
+        parts=[]
+        for group,weight in groups:
+            if not group.empty:
+                each=weight/len(group)
+                for _,r in group.iterrows(): parts.append({"Portfolio":label,"Anlage":r.Anlage,"Ticker":r.Ticker,"Typ":r.Typ,"Gewicht %":each*100,"Score":r.Score,"Risiko":r.Risiko,"Rendite p.a. %":r["Rendite p.a. %"],"Volatilität %":r["Volatilität %"]})
+        for r in parts: portfolios.append(r)
+    st.subheader("Übersicht: zehn gemischte Möglichkeiten")
+    summary=[]
+    for label, *_ in profiles:
+        rows=[r for r in portfolios if r["Portfolio"]==label]
+        types=sorted(set(r["Typ"] for r in rows))
+        summary.append({"Nr.":len(summary)+1,"Portfolio":label,"Anzahl Anlagen":len(rows),"Anlagearten":", ".join(types),"Durchschnitts-Score":np.average([r["Score"] for r in rows],weights=[r["Gewicht %"] for r in rows]) if rows else np.nan,"Risiko-Profil":profiles[len(summary)][1],"Wachstumsziel":profiles[len(summary)][2]})
+    st.dataframe(style_table(pd.DataFrame(summary)),use_container_width=True,hide_index=True)
+    selected_port=st.selectbox("Portfolio genauer anschauen",[p[0] for p in profiles],index=1,key="mixed_port_select")
+    detail=pd.DataFrame([r for r in portfolios if r["Portfolio"]==selected_port])
+    if not detail.empty:
+        st.subheader(f"Zusammensetzung: {selected_port}")
+        st.dataframe(style_table(detail.drop(columns=["Portfolio"])),use_container_width=True,hide_index=True)
+        st.write("**Beispielhafte Aufteilung deines Anlagebetrags**")
+        allocation=detail[["Anlage","Ticker","Typ","Gewicht %"]].copy()
+        allocation["Betrag (€)"]=allocation["Gewicht %"]*money/100
+        st.dataframe(allocation.style.format({"Gewicht %":"{:.1f}%","Betrag (€)":"€ {:,.2f}"}),use_container_width=True,hide_index=True)
+        st.caption(f"Zeitraum-Auswahl: {horizon}. Die Tabelle zeigt eine Modellaufteilung, keine garantierte Rendite. Gebühren, Steuern, Währung und zukünftige Verluste sind nicht berücksichtigt.")
 else:
-    st.info("Lade zuerst eine Rangliste oder klicke im aufklappbaren Bereich auf ‘10 Vorschläge berechnen’, damit die Anlageideen auf aktuellen Kursdaten beruhen.")
+    st.info("Klicke auf **10 gemischte Vorschläge berechnen**. Die App lädt dann eine Auswahl aus Aktien, ETFs und Rohstoffen; das kann etwas dauern.")
 
 st.caption("Datenhinweis: Yahoo Finance kann verspätete, unvollständige oder fehlerhafte Daten liefern. Kursreihen unterschiedlicher Instrumente beginnen zu unterschiedlichen Zeitpunkten. Futures und ETFs sind nicht identisch mit dem physischen Rohstoff. Alle Scores und Szenarien sind vereinfachte Modellwerte und keine Kaufempfehlung.")
