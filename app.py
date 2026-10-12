@@ -219,6 +219,18 @@ with st.expander("⚙️ Monte-Carlo-Formel einstellen", expanded=False):
     mc_sigma_factor = st.slider("Volatilitäts-Faktor σ", 0.0, 3.0, 1.0, step=0.1, key="risk_mc_sigma")
     mc_seed = st.number_input("Zufallsstartwert (Seed)", min_value=0, max_value=999999, value=42, step=1, key="risk_mc_seed")
     st.caption("Formel: Sₜ₊₁ = Sₜ · exp((μ − σ²/2)Δt + σ√Δt · Z). μ = historische mittlere Rendite, σ = historische Volatilität, Z = Zufallszahl.")
+st.markdown(
+    """**Kurzanleitung – Risiko & Portfolio (8 Punkte)**
+
+    1. **Anzahl der Simulationen:** Mehr Durchläufe machen die Ergebnisse meist stabiler, brauchen aber länger.
+    2. **Simulationszeitraum:** Legt fest, wie viele Handelstage simuliert werden.
+    3. **Rendite-Faktor μ:** 0 blendet die historische Rendite aus; 1 nutzt sie unverändert; über 1 verstärkt sie sich.
+    4. **Volatilitäts-Faktor σ:** 0 blendet Schwankungen aus; 1 nutzt die historische Volatilität; höhere Werte erhöhen das modellierte Risiko.
+    5. **Seed:** Gleicher Wert und gleiche Daten liefern reproduzierbare Simulationen.
+    6. **Monte-Carlo-Formel:** Erzeugt mögliche Kursverläufe aus Rendite, Volatilität und Zufallszahlen.
+    7. **Risiko berechnen:** Startet die Analyse mit den eingestellten Parametern.
+    8. **Hinweis:** Ergebnisse sind Szenarien, keine sichere Kursvorhersage."""
+)
 if st.button("Risiko berechnen",type="primary",key="risk_calc"):
     try:
         weights={str(r.Ticker).strip().upper():float(r["Gewicht %"])/100 for _,r in port.iterrows() if str(r.Ticker).strip() and pd.notna(r["Gewicht %"]) and float(r["Gewicht %"])>0}
@@ -256,7 +268,6 @@ if st.button("Risiko berechnen",type="primary",key="risk_calc"):
                 q05=float(np.quantile(terminal,.05)); q50=float(np.quantile(terminal,.5)); q95=float(np.quantile(terminal,.95))
                 st.write(f"5%-Quantil: **€ {q05:,.2f}** · Median: **€ {q50:,.2f}** · 95%-Quantil: **€ {q95:,.2f}**")
                 st.caption("Monte-Carlo verwendet historische Mittelwerte/Kovarianzen. Ergebnisse hängen stark von Modellannahmen ab und sind keine Vorhersage.")
-                st.markdown("**Kurzanleitung – Einstellungen**\n\n1. **Anzahl der Simulationen:** Mehr Durchläufe machen die Ergebnisse meist stabiler, brauchen aber länger.\n2. **Simulationszeitraum:** Legt fest, wie viele Handelstage simuliert werden.\n3. **Rendite-Faktor μ:** 0 blendet die historische Rendite aus; 1 nutzt sie unverändert; über 1 verstärkt sie sich.\n4. **Volatilitäts-Faktor σ:** 0 blendet Schwankungen aus; 1 nutzt die historische Volatilität; höhere Werte erhöhen das modellierte Risiko.\n5. **Seed:** Gleicher Wert und gleiche Daten liefern reproduzierbare Simulationen.\n6. **Monte-Carlo-Formel:** Erzeugt viele mögliche Kursverläufe aus Rendite, Volatilität und Zufallszahlen.\n7. **Risiko berechnen:** Startet die Analyse mit den eingestellten Parametern.\n8. **Hinweis:** Ergebnisse sind Szenarien, keine sichere Kursvorhersage.")
                 # stress test: shocks on equity-like vs bond-like / commodity proxies
                 shocks=[]
                 for label,shock in [("Aktien −30 %",-.30),("Aktien +20 %",.20),("Zinsen +2 %-Punkte (Anleihen-Näherung)",None),("Gold −15 %",-.15),("Alle Anlagen −20 %",-.20)]:
