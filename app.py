@@ -220,16 +220,19 @@ with st.expander("⚙️ Monte-Carlo-Formel einstellen", expanded=False):
     mc_seed = st.number_input("Zufallsstartwert (Seed)", min_value=0, max_value=999999, value=42, step=1, key="risk_mc_seed")
     st.caption("Formel: Sₜ₊₁ = Sₜ · exp((μ − σ²/2)Δt + σ√Δt · Z). μ = historische mittlere Rendite, σ = historische Volatilität, Z = Zufallszahl.")
 st.markdown(
-    """**Kurzanleitung – Risiko & Portfolio (8 Punkte)**
+    """**Kurzanleitung – Risiko & Portfolio (11 Punkte)**
 
-    1. **Anzahl der Simulationen:** Mehr Durchläufe machen die Ergebnisse meist stabiler, brauchen aber länger.
-    2. **Simulationszeitraum:** Legt fest, wie viele Handelstage simuliert werden.
-    3. **Rendite-Faktor μ:** 0 blendet die historische Rendite aus; 1 nutzt sie unverändert; über 1 verstärkt sie sich.
-    4. **Volatilitäts-Faktor σ:** 0 blendet Schwankungen aus; 1 nutzt die historische Volatilität; höhere Werte erhöhen das modellierte Risiko.
-    5. **Seed:** Gleicher Wert und gleiche Daten liefern reproduzierbare Simulationen.
-    6. **Monte-Carlo-Formel:** Erzeugt mögliche Kursverläufe aus Rendite, Volatilität und Zufallszahlen.
-    7. **Risiko berechnen:** Startet die Analyse mit den eingestellten Parametern.
-    8. **Hinweis:** Ergebnisse sind Szenarien, keine sichere Kursvorhersage."""
+    1. **Ticker:** Kürzel der Anlage, die in die Portfolioberechnung aufgenommen wird.
+    2. **Gewicht %:** Anteil jeder Anlage; ATLAS normiert alle Gewichte zusammen auf 100 %.
+    3. **VaR-Konfidenz:** 95 % bzw. 99 % bestimmt das statistische Sicherheitsniveau der Verlustschätzung.
+    4. **VaR-Haltedauer:** Anzahl der Tage, für die der mögliche Verlust geschätzt wird.
+    5. **Anzahl der Simulationen:** Mehr Durchläufe machen Monte-Carlo-Ergebnisse meist stabiler, brauchen aber länger.
+    6. **Simulationszeitraum:** Legt fest, wie viele Handelstage simuliert werden.
+    7. **Rendite-Faktor μ:** 0 blendet die historische Rendite aus; 1 nutzt sie unverändert; über 1 verstärkt sie sich.
+    8. **Volatilitäts-Faktor σ:** 0 blendet Schwankungen aus; 1 nutzt die historische Volatilität; höhere Werte erhöhen das modellierte Risiko.
+    9. **Seed:** Gleicher Wert und gleiche Daten liefern reproduzierbare Simulationen.
+    10. **Monte-Carlo-Formel und „Risiko berechnen“:** Simulieren mögliche Kursverläufe mit den gewählten Einstellungen und starten die Analyse.
+    11. **Hinweis:** VaR und Simulationen sind Schätzungen unter Modellannahmen, keine sichere Verlustgrenze oder Kursvorhersage."""
 )
 if st.button("Risiko berechnen",type="primary",key="risk_calc"):
     try:
