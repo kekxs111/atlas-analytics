@@ -212,14 +212,13 @@ st.write("Füge Ticker und Gewichte ein. Die Gewichte werden für die Rechnung a
 default_port=pd.DataFrame({"Ticker":["SPY","TLT","GLD"],"Gewicht %":[50.0,30.0,20.0]})
 port=st.data_editor(default_port,num_rows="dynamic",use_container_width=True,key="portfolio_editor")
 conf=st.selectbox("VaR-Konfidenz",["95 %","99 %"]); days=st.slider("VaR-Haltedauer (Tage)",1,252,1)
-with st.expander("⚙️ Monte-Carlo-Formel einstellen", expanded=True):
-    st.caption("Diese Einstellungen werden angewendet, wenn du auf „Risiko berechnen“ klickst.")
-    mc_sims=st.select_slider("Anzahl Simulationen", options=[500,1000,2500,5000,10000,20000], value=5000)
-    mc_horizon=st.slider("Simulationszeitraum (Handelstage)", 1, 1260, 252, help="252 Handelstage entsprechen ungefähr einem Börsenjahr.")
-    mc_drift=st.slider("Rendite-Faktor μ", 0.0, 2.0, 1.0, 0.1, help="Multipliziert die aus historischen Tagesrenditen geschätzte durchschnittliche Rendite. 1,0 = unverändert.")
-    mc_vol=st.slider("Volatilitäts-Faktor σ", 0.25, 3.0, 1.0, 0.05, help="Skaliert die historische Schwankungsstärke. 1,0 = unverändert.")
-    mc_seed=st.number_input("Zufallsstartwert (Seed)", min_value=0, max_value=999999, value=42, step=1, help="Gleicher Seed und gleiche Daten ergeben reproduzierbare Simulationen.")
-    st.code("rₜ ~ Normal(μ × Rendite-Faktor, Σ × Volatilitäts-Faktor²)\nEndwert = Startkapital × ∏(1 + Portfolio-Tagesrenditeₜ)", language="text")
+with st.expander("⚙️ Monte-Carlo-Formel einstellen", expanded=False):
+    mc_sims = st.slider("Anzahl der Simulationen", 500, 20000, 5000, step=500, key="risk_mc_sims")
+    mc_days = st.slider("Simulationszeitraum (Handelstage)", 21, 1260, 252, step=21, key="risk_mc_days")
+    mc_mu_factor = st.slider("Rendite-Faktor μ", 0.0, 2.0, 1.0, step=0.1, key="risk_mc_mu")
+    mc_sigma_factor = st.slider("Volatilitäts-Faktor σ", 0.0, 3.0, 1.0, step=0.1, key="risk_mc_sigma")
+    mc_seed = st.number_input("Zufallsstartwert (Seed)", min_value=0, max_value=999999, value=42, step=1, key="risk_mc_seed")
+    st.caption("Formel: Sₜ₊₁ = Sₜ · exp((μ − σ²/2)Δt + σ√Δt · Z). μ = historische mittlere Rendite, σ = historische Volatilität, Z = Zufallszahl.")
 if st.button("Risiko berechnen",type="primary",key="risk_calc"):
     try:
         weights={str(r.Ticker).strip().upper():float(r["Gewicht %"])/100 for _,r in port.iterrows() if str(r.Ticker).strip() and pd.notna(r["Gewicht %"]) and float(r["Gewicht %"])>0}
@@ -247,19 +246,17 @@ if st.button("Risiko berechnen",type="primary",key="risk_calc"):
                     if len(fdf)>30:
                         y=fdf["Portfolio"].values; X=np.column_stack([np.ones(len(fdf)),fdf.drop(columns="Portfolio").values]); coef=np.linalg.lstsq(X,y,rcond=None)[0]
                         st.dataframe(pd.DataFrame({"Faktor":["Alpha"]+list(fdf.columns[1:]),"Koeffizient":coef}),use_container_width=True)
-                # Monte Carlo: user-configurable historical drift, volatility, horizon and seed
-                rng=np.random.default_rng(int(mc_seed))
-                mu=R.mean().values * float(mc_drift)
-                covm=R.cov().values * float(mc_vol)**2
-                try: sims=rng.multivariate_normal(mu,covm,size=(int(mc_sims),int(mc_horizon)),check_valid="ignore")
-                except Exception: sims=rng.normal(mu,np.sqrt(np.maximum(np.diag(covm),1e-12)),size=(int(mc_sims),int(mc_horizon),len(valid)))
-                port_daily=np.einsum("s t a,a->s t",sims,w)
-                terminal=money*np.prod(1+np.clip(port_daily,-.99,None),axis=1)
-                st.write(f"**Monte-Carlo: simulierte Portfolio-Werte über {mc_horizon} Handelstage**")
-                mcdf=pd.DataFrame({"Portfolio-Wert (€)":terminal}); st.plotly_chart(px.histogram(mcdf,x="Portfolio-Wert (€)",nbins=50,title=f"Simulierte Endwerte · {mc_sims:,} Simulationen (keine Prognose)"),use_container_width=True)
+                # Monte Carlo, using daily historical mean and covariance
+                rng=np.random.default_rng(int(mc_seed)); mu=R.mean().values * float(mc_mu_factor); covm=R.cov().values * float(mc_sigma_factor)**2
+                try: sims=rng.multivariate_normal(mu,covm,size=(int(mc_sims),int(mc_days)),check_valid="ignore")
+                except Exception: sims=rng.normal(mu,np.sqrt(np.maximum(np.diag(covm),1e-12)),size=(int(mc_sims),int(mc_days),len(valid)))
+                port_daily=np.einsum("s t a,a->s t",sims,w); terminal=money*np.exp(np.log1p(np.clip(port_daily,-.99,None)).sum(axis=1))
+                st.write(f"**Monte-Carlo: simulierte Portfolio-Werte nach {int(mc_days)} Handelstagen**")
+                mcdf=pd.DataFrame({"Portfolio-Wert (€)":terminal}); st.plotly_chart(px.histogram(mcdf,x="Portfolio-Wert (€)",nbins=50,title=f"Simulierte Endwerte nach {int(mc_days)} Handelstagen (keine Prognose)"),use_container_width=True)
                 q05=float(np.quantile(terminal,.05)); q50=float(np.quantile(terminal,.5)); q95=float(np.quantile(terminal,.95))
                 st.write(f"5%-Quantil: **€ {q05:,.2f}** · Median: **€ {q50:,.2f}** · 95%-Quantil: **€ {q95:,.2f}**")
-                st.caption(f"Modell: μ-Faktor {mc_drift:.2f}, σ-Faktor {mc_vol:.2f}, {mc_sims:,} Simulationen, {mc_horizon} Handelstage, Seed {int(mc_seed)}. Historische Renditen/Kovarianzen sind keine verlässliche Vorhersage; die Einstellungen verändern das Ergebnis.")
+                st.caption("Monte-Carlo verwendet historische Mittelwerte/Kovarianzen. Ergebnisse hängen stark von Modellannahmen ab und sind keine Vorhersage.")
+                st.markdown("**Kurzanleitung – Einstellungen**\n\n1. **Anzahl der Simulationen:** Mehr Durchläufe machen die Ergebnisse meist stabiler, brauchen aber länger.\n2. **Simulationszeitraum:** Legt fest, wie viele Handelstage simuliert werden.\n3. **Rendite-Faktor μ:** 0 blendet die historische Rendite aus; 1 nutzt sie unverändert; über 1 verstärkt sie sich.\n4. **Volatilitäts-Faktor σ:** 0 blendet Schwankungen aus; 1 nutzt die historische Volatilität; höhere Werte erhöhen das modellierte Risiko.\n5. **Seed:** Gleicher Wert und gleiche Daten liefern reproduzierbare Simulationen.\n6. **Monte-Carlo-Formel:** Erzeugt viele mögliche Kursverläufe aus Rendite, Volatilität und Zufallszahlen.\n7. **Risiko berechnen:** Startet die Analyse mit den eingestellten Parametern.\n8. **Hinweis:** Ergebnisse sind Szenarien, keine sichere Kursvorhersage.")
                 # stress test: shocks on equity-like vs bond-like / commodity proxies
                 shocks=[]
                 for label,shock in [("Aktien −30 %",-.30),("Aktien +20 %",.20),("Zinsen +2 %-Punkte (Anleihen-Näherung)",None),("Gold −15 %",-.15),("Alle Anlagen −20 %",-.20)]:
