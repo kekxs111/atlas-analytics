@@ -155,7 +155,7 @@ with st.sidebar:
     applied_risk = applied_scenario["risk"]
     applied_growth = applied_scenario["growth"]
     # Moderate, transparent scenario multipliers: these adjust modeled volatility, not guaranteed real-world risk.
-    risk_volatility_factor = {"Niedrig": 0.90, "Mittel": 1.00, "Hoch": 1.15, "Alle": 1.00}
+    risk_volatility_factor = {"Niedrig": 0.65, "Mittel": 1.00, "Hoch": 1.50, "Alle": 1.00}
     st.caption(f"Zuletzt angewendet: {applied_money:,.2f} € · {applied_horizon} · Risiko {applied_risk} · Wachstum {applied_growth}.")
     st.caption("Vorschläge sind datenbasierte Beispiele, keine persönliche Finanzberatung oder Garantie.")
 
@@ -252,7 +252,7 @@ if st.button("Risiko berechnen",type="primary",key="risk_calc"):
                 daily_sigma=historical_daily_sigma * profile_factor
                 z=1.65 if conf=="95 %" else 2.33
                 var=z*daily_sigma*money*math.sqrt(days)
-                st.caption(f"Risikoprofil: {risk_pref} · Volatilitätsfaktor {profile_factor:.2f} (Niedrig 0,90 · Mittel 1,00 · Hoch 1,15). Historische Volatilität wird moderat angepasst; dies ist eine Szenarioannahme, keine Messung des tatsächlichen zukünftigen Risikos.")
+                st.caption(f"Risikoprofil: {risk_pref} · Volatilitätsfaktor {profile_factor:.2f} (Niedrig 0,65 · Mittel 1,00 · Hoch 1,50). Historische Volatilität wird moderat angepasst; dies ist eine Szenarioannahme, keine Messung des tatsächlichen zukünftigen Risikos.")
                 st.metric(f"Parametrischer VaR ({conf}, {days} Tag(e))",f"€ {var:,.2f}",help="Modellschätzung: bei gewähltem Konfidenzniveau wird der Verlust in diesem Modell in den meisten Fällen nicht überschritten; Extremverluste können größer sein.")
                 st.metric("Geschätzte jährliche Volatilität",f"{daily_sigma*math.sqrt(252)*100:.2f}%")
                 st.metric("Summe der Portfolio-Gewichte",f"{sum(weights[t] for t in valid)/sum(weights[t] for t in valid)*100:.0f}% (normiert)")
@@ -395,10 +395,16 @@ if not idea_source.empty:
                     hist_df=hist_df.reindex(columns=tickers).fillna(0.0)
                     mu=hist_df.mean().values
                     historical_cov=hist_df.cov().values
-                    applied_profile_factor = risk_volatility_factor.get(applied_risk, 1.00)
+                    # The chart follows the current sidebar selections immediately.
+                    # The "apply to 10 suggestions" button controls the suggested portfolio,
+                    # but should not leave the Monte-Carlo risk profile stale.
+                    mc_risk = risk_pref
+                    mc_money = float(money)
+                    mc_horizon = horizon
+                    applied_profile_factor = risk_volatility_factor.get(mc_risk, 1.00)
                     cov=historical_cov * applied_profile_factor**2
                     rng=np.random.default_rng(2026)
-                    sim_days={"1 Monat":21,"3 Monate":63,"6 Monate":126,"1 Jahr":252,"3 Jahre":756,"5 Jahre":1260,"10 Jahre":2520}.get(applied_horizon,252)
+                    sim_days={"1 Monat":21,"3 Monate":63,"6 Monate":126,"1 Jahr":252,"3 Jahre":756,"5 Jahre":1260,"10 Jahre":2520}.get(mc_horizon,252)
                     sim_count=1000
                     # Chunk simulations to keep memory use reasonable for long horizons.
                     ending_parts=[]
@@ -409,15 +415,15 @@ if not idea_source.empty:
                         except Exception:
                             simulated=rng.normal(mu,np.sqrt(np.maximum(np.diag(cov),1e-12)),size=(batch,sim_days,len(tickers)))
                         port_returns=np.einsum("sta,a->st",simulated,weights)
-                        ending_parts.extend((applied_money*np.exp(np.log1p(np.clip(port_returns,-.99,None)).sum(axis=1))).tolist())
+                        ending_parts.extend((mc_money*np.exp(np.log1p(np.clip(port_returns,-.99,None)).sum(axis=1))).tolist())
                     ending=np.asarray(ending_parts)
                     q05,q50,q95=np.quantile(ending,[.05,.50,.95])
                     c1,c2,c3=st.columns(3)
                     c1.metric("Monte-Carlo · schlechtes Szenario (5 %)",f"€ {q05:,.0f}")
                     c2.metric("Median-Szenario",f"€ {q50:,.0f}")
                     c3.metric("Gutes Szenario (95 %)",f"€ {q95:,.0f}")
-                    st.plotly_chart(px.histogram(pd.DataFrame({"Simulierter Endwert (€)":ending}),x="Simulierter Endwert (€)",nbins=40,title=f"Automatische Monte-Carlo-Simulation · {applied_horizon} · {sim_count:,} Pfade"),use_container_width=True)
-                    st.caption(f"Risikoprofil {applied_risk}: Volatilitätsfaktor {applied_profile_factor:.2f} (Niedrig 0,90 · Mittel 1,00 · Hoch 1,15). Die Simulation skaliert historische Schwankungen moderat; das ist eine Szenarioannahme und keine Garantie für reale Verluste. Bei langen Zeiträumen steigt die Unsicherheit erheblich.")
+                    st.plotly_chart(px.histogram(pd.DataFrame({"Simulierter Endwert (€)":ending}),x="Simulierter Endwert (€)",nbins=40,title=f"Automatische Monte-Carlo-Simulation · {mc_horizon} · {sim_count:,} Pfade"),use_container_width=True)
+                    st.caption(f"Aktuelle Auswahl: Risiko {mc_risk}, Anlagebetrag € {mc_money:,.2f}, Zeitraum {mc_horizon}. Volatilitätsfaktoren: Niedrig 0,65 · Mittel 1,00 · Hoch 1,50. Niedrig reduziert und Hoch erhöht die simulierten Schwankungen deutlich. Das ist eine Modellannahme, keine Garantie für reale Verluste; auch bei niedrigem Risiko kann das schlechte Szenario unter dem Startkapital liegen.")
                 else:
                     st.info("Für die automatische Monte-Carlo-Simulation sind derzeit nicht genügend gemeinsame historische Kursdaten verfügbar.")
             except Exception as mc_error:
