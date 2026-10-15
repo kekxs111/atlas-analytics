@@ -395,7 +395,10 @@ if not idea_source.empty:
                     hist_df=hist_df.reindex(columns=tickers).fillna(0.0)
                     mu=hist_df.mean().values
                     historical_cov=hist_df.cov().values
-                    # The chart follows the current sidebar selections immediately.
+                    # In a downside scenario, do not let positive historical average
+                    # returns dominate the 5% tail. Use a conservative, volatility-linked
+                    # negative drift for the whole simulated distribution.
+                    # This keeps q05/q50/q95 internally consistent within one simulation.
                     # The "apply to 10 suggestions" button controls the suggested portfolio,
                     # but should not leave the Monte-Carlo risk profile stale.
                     mc_risk = risk_pref
@@ -403,6 +406,11 @@ if not idea_source.empty:
                     mc_horizon = horizon
                     applied_profile_factor = risk_volatility_factor.get(mc_risk, 1.00)
                     cov=historical_cov * applied_profile_factor**2
+                    daily_sigma=np.sqrt(np.maximum(np.diag(cov),0.0))
+                    # Conservative drift assumption: at least a small negative daily
+                    # drift proportional to volatility, while preserving worse historical
+                    # negative means. This makes the 5% scenario reflect downside risk.
+                    mu=np.minimum(mu, -0.10*daily_sigma)
                     rng=np.random.default_rng(2026)
                     sim_days={"1 Monat":21,"3 Monate":63,"6 Monate":126,"1 Jahr":252,"3 Jahre":756,"5 Jahre":1260,"10 Jahre":2520}.get(mc_horizon,252)
                     sim_count=1000
@@ -423,7 +431,7 @@ if not idea_source.empty:
                     c2.metric("Median-Szenario",f"€ {q50:,.0f}")
                     c3.metric("Gutes Szenario (95 %)",f"€ {q95:,.0f}")
                     st.plotly_chart(px.histogram(pd.DataFrame({"Simulierter Endwert (€)":ending}),x="Simulierter Endwert (€)",nbins=40,title=f"Automatische Monte-Carlo-Simulation · {mc_horizon} · {sim_count:,} Pfade"),use_container_width=True)
-                    st.caption(f"Aktuelle Auswahl: Risiko {mc_risk}, Anlagebetrag € {mc_money:,.2f}, Zeitraum {mc_horizon}. Volatilitätsfaktoren: Niedrig 0,65 · Mittel 1,00 · Hoch 1,50. Niedrig reduziert und Hoch erhöht die simulierten Schwankungen deutlich. Das ist eine Modellannahme, keine Garantie für reale Verluste; auch bei niedrigem Risiko kann das schlechte Szenario unter dem Startkapital liegen.")
+                    st.caption(f"Aktuelle Auswahl: Risiko {mc_risk}, Anlagebetrag € {mc_money:,.2f}, Zeitraum {mc_horizon}. Volatilitätsfaktoren: Niedrig 0,65 · Mittel 1,00 · Hoch 1,50. Die Simulation verwendet eine konservative, leicht negative Driftannahme, damit positive historische Durchschnittsrenditen das schlechte Szenario nicht automatisch in den Gewinn ziehen. Das ist eine Modellannahme und keine Prognose oder Garantie für reale Verluste.")
                 else:
                     st.info("Für die automatische Monte-Carlo-Simulation sind derzeit nicht genügend gemeinsame historische Kursdaten verfügbar.")
             except Exception as mc_error:
