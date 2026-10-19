@@ -1,23 +1,30 @@
 # ATLAS Analytics · Risk Platform
 
-Streamlit-basiertes Multi-Asset Risk- und Portfolio-Tool (inspiriert von institutionellen Plattformen wie Aladdin).
+Streamlit Multi-Asset Risk- und Portfolio-Tool (inspiriert von institutionellen Plattformen wie Aladdin).
 
 ## Module
 
 | Modul | Funktion |
 |-------|----------|
-| **Market Scanner** | Kuratierte globale Aktien/ETFs/Rohstoffe, Ranking, Score, Charts |
+| **Market Scanner** | Globale Aktien / ETFs / Rohstoffe, Ranking, Score, Charts |
 | **Portfolio Builder** | Multi-Book (Core, Satellite, …), Gewichte, Asset-Class-Allokation |
-| **Risk Analytics** | Historischer & parametrischer VaR/CVaR, Contribution to Risk, Korrelation, Monte-Carlo |
-| **Stress Tests** | Vordefinierte Szenarien (2008, Rate Shock, Tech Sell-off, …) + eigene Schocks |
-| **Fixed Income** | Duration, approximierte Zins-Sensitivität, Bond-ETF-Übersicht |
+| **Risk Analytics** | Hist. & parametrischer VaR / CVaR, Contribution to Risk, Korrelation, Monte-Carlo |
+| **Stress Tests** | 2008, Rate Shock, Tech Sell-off, Inflation, eigene Schocks |
+| **Fixed Income** | Duration, approximierte Zins-Sensitivität |
 | **FX & Multi-Currency** | Währungs-Exposure über alle Bücher |
-| **Trade Journal** | Einfaches Order-/Trade-Log (Session) |
+| **Trade Journal** | Order-/Trade-Log (Session) |
 | **Compliance** | Konzentrations- und Asset-Class-Limits |
 | **Reports** | Text- und CSV-Export |
 | **News** | RSS (Reuters, BBC, Fed, ECB, SEC) |
 
-## Lokal starten
+## Dateien
+
+- `app.py` – UI und Navigation
+- `atlas_config.py` – Universum, Währungen, Asset Classes, Bond-Duration
+- `atlas_risk.py` – Datenlayer + Risikomodelle (VaR, CVaR, Stress, Monte-Carlo)
+- `requirements.txt`
+
+## Start
 
 ```bash
 python -m venv .venv
@@ -28,7 +35,7 @@ streamlit run app.py
 
 ## Hinweise
 
-- Kursdaten: Yahoo Finance (verzögert, nicht garantiert vollständig).
-- VaR, CVaR, Stress-Tests und Duration sind **Modellnäherungen**, keine Vorhersagen.
-- Multi-Book und Trade-Journal leben nur in der Streamlit-Session (nicht persistent).
+- Kursdaten: Yahoo Finance (verzögert).
+- VaR, CVaR, Stress und Duration sind **Modellnäherungen**.
+- Multi-Book und Trade-Journal nur in der Streamlit-Session (nicht persistent).
 - Keine Anlageberatung.
