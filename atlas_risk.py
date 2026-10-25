@@ -13,7 +13,17 @@ except Exception:
 
 from atlas_config import ASSET_CLASS, BOND_DURATION, ticker_currency
 
-# DATA LAYER
+@st.cache_data(ttl=300, show_spinner=False)
+def get_last_price(ticker: str) -> float:
+    """Latest close price; NaN if unavailable."""
+    try:
+        df = yf.Ticker(ticker).history(period="5d", interval="1d", auto_adjust=True, actions=False)
+        if df is None or df.empty or "Close" not in df.columns:
+            return float("nan")
+        return float(df["Close"].dropna().iloc[-1])
+    except Exception:
+        return float("nan")
+
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_history(ticker: str, period: str = "5y") -> pd.DataFrame:
     try:
@@ -163,3 +173,16 @@ def fixed_income_impact(weights: Dict[str, float], rate_shock_bp: float = 100) -
             "Rate Shock (bp)": rate_shock_bp, "Impact %": impact * 100,
         })
     return {"total_impact": total_impact, "details": pd.DataFrame(rows)}
+
+def holdings_to_weights(holdings: dict, prices: dict) -> Dict[str, float]:
+    """Convert qty holdings + prices to portfolio weights."""
+    values = {}
+    for t, h in holdings.items():
+        qty = float(h.get("qty", 0) or 0)
+        px = prices.get(t, float("nan"))
+        if qty > 0 and px == px and px > 0:
+            values[t] = qty * px
+    total = sum(values.values())
+    if total <= 0:
+        return {}
+    return {t: v / total for t, v in values.items()}
