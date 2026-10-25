@@ -6,3 +6,4 @@ plotly>=5.18
 feedparser>=6.0
 requests>=2.31
 scipy>=1.11
+curl_cffi>=0.5.0
