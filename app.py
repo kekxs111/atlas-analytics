@@ -19,35 +19,30 @@ from atlas_risk import (
 )
 
 warnings.filterwarnings("ignore", category=FutureWarning)
-st.set_page_config(page_title="ATLAS Analytics · Risk Platform", page_icon="🌐", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="ATLAS", page_icon="\U0001f310", layout="wide", initial_sidebar_state="expanded")
 TZ = ZoneInfo("Europe/Berlin")
 NOW = datetime.now(TZ)
 
+QUICK = ["SPY", "QQQ", "EUNL.DE", "VWCE.DE", "AGG", "GLD", "AAPL", "MSFT", "NVDA", "SAP"]
+
 def init_state():
-    if "books" not in st.session_state:
-        st.session_state.books = {"Core": {}}
+    if "holdings" not in st.session_state:
+        st.session_state.holdings = {}
     if "cash" not in st.session_state:
-        st.session_state.cash = {"Core": 10000.0}
-    if "active_book" not in st.session_state:
-        st.session_state.active_book = "Core"
+        st.session_state.cash = 10000.0
     if "trades" not in st.session_state:
         st.session_state.trades = []
-    if "compliance_limits" not in st.session_state:
-        st.session_state.compliance_limits = {"max_single_position": 0.25, "max_asset_class": 0.70}
-    if "portfolio" in st.session_state and st.session_state.portfolio:
-        for bname, wts in st.session_state.portfolio.items():
-            if bname not in st.session_state.books:
-                st.session_state.books[bname] = {}
-                st.session_state.cash[bname] = 10000.0
-        del st.session_state.portfolio
+    if "books" in st.session_state:
+        active = st.session_state.get("active_book", "Core")
+        st.session_state.holdings = st.session_state.books.get(active, {})
+        st.session_state.cash = float(st.session_state.cash.get(active, 10000.0)) if isinstance(st.session_state.cash, dict) else float(st.session_state.cash or 10000)
+        del st.session_state.books
 
-def book_nav(book_name: str):
-    holdings = st.session_state.books.get(book_name, {})
-    cash = float(st.session_state.cash.get(book_name, 0.0))
+def portfolio_snapshot():
+    cash = float(st.session_state.cash)
     rows, prices = [], {}
-    invested = 0.0
-    cost_total = 0.0
-    for t, h in holdings.items():
+    invested = cost_total = 0.0
+    for t, h in st.session_state.holdings.items():
         qty = float(h.get("qty", 0) or 0)
         avg = float(h.get("avg_cost", 0) or 0)
         if qty <= 0:
@@ -57,347 +52,332 @@ def book_nav(book_name: str):
         mv = qty * px if px == px else float("nan")
         cost = qty * avg
         pnl = (mv - cost) if mv == mv else float("nan")
-        pnl_pct = (pnl / cost * 100) if cost and pnl == pnl else float("nan")
         invested += mv if mv == mv else 0.0
         cost_total += cost
         rows.append({
-            "Ticker": t, "Name": ALL_UNIVERSE.get(t, t), "Stück": qty, "Ø Einkauf": avg,
-            "Kurs": px, "Marktwert €": mv, "Kosten €": cost, "P&L €": pnl, "P&L %": pnl_pct,
-            "Gewicht %": 0.0, "Asset Class": ASSET_CLASS.get(t, "—"), "Währung": ticker_currency(t),
+            "Titel": t, "Name": ALL_UNIVERSE.get(t, t), "St\u00fcck": qty, "Einkauf": avg,
+            "Kurs": px, "Wert \u20ac": mv, "Gewinn/Verlust \u20ac": pnl,
+            "Gewinn/Verlust %": (pnl / cost * 100) if cost and pnl == pnl else float("nan"),
+            "Anteil %": 0.0,
         })
     nav = cash + invested
     for r in rows:
-        if nav > 0 and r["Marktwert €"] == r["Marktwert €"]:
-            r["Gewicht %"] = r["Marktwert €"] / nav * 100
+        if nav > 0 and r["Wert \u20ac"] == r["Wert \u20ac"]:
+            r["Anteil %"] = r["Wert \u20ac"] / nav * 100
     df = pd.DataFrame(rows)
     if not df.empty:
-        df = df.sort_values("Marktwert €", ascending=False)
+        df = df.sort_values("Wert \u20ac", ascending=False)
     return cash, df, invested, nav, cost_total, prices
 
-def weights_from_book(book_name: str) -> dict:
-    cash, df, invested, nav, _, prices = book_nav(book_name)
-    holdings = st.session_state.books.get(book_name, {})
-    return holdings_to_weights(holdings, prices)
+def do_buy(ticker: str, qty: float, px: float):
+    notional = qty * px
+    cash = float(st.session_state.cash)
+    if notional > cash + 1e-6:
+        return False, f"Nicht genug Geld. Du hast {cash:,.2f} \u20ac, brauchst {notional:,.2f} \u20ac."
+    h = st.session_state.holdings.get(ticker, {"qty": 0.0, "avg_cost": 0.0})
+    old_q, old_c = float(h["qty"]), float(h["avg_cost"])
+    new_q = old_q + qty
+    new_avg = ((old_q * old_c) + notional) / new_q if new_q > 0 else px
+    st.session_state.holdings[ticker] = {"qty": new_q, "avg_cost": new_avg}
+    st.session_state.cash = cash - notional
+    st.session_state.trades.append({
+        "Zeit": NOW.strftime("%d.%m.%Y %H:%M"), "Art": "Kauf", "Titel": ticker,
+        "St\u00fcck": qty, "Preis": px, "Betrag \u20ac": notional,
+    })
+    return True, f"Gekauft: {qty:.4g} \u00d7 {ticker} f\u00fcr {notional:,.2f} \u20ac"
+
+def do_sell(ticker: str, qty: float, px: float):
+    h = st.session_state.holdings.get(ticker, {"qty": 0.0, "avg_cost": 0.0})
+    old_q = float(h["qty"])
+    if qty > old_q + 1e-9:
+        return False, f"Du hast nur {old_q:.4g} St\u00fcck von {ticker}."
+    notional = qty * px
+    new_q = old_q - qty
+    if new_q < 1e-9:
+        st.session_state.holdings.pop(ticker, None)
+    else:
+        st.session_state.holdings[ticker] = {"qty": new_q, "avg_cost": float(h["avg_cost"])}
+    st.session_state.cash = float(st.session_state.cash) + notional
+    st.session_state.trades.append({
+        "Zeit": NOW.strftime("%d.%m.%Y %H:%M"), "Art": "Verkauf", "Titel": ticker,
+        "St\u00fcck": qty, "Preis": px, "Betrag \u20ac": notional,
+    })
+    return True, f"Verkauft: {qty:.4g} \u00d7 {ticker} f\u00fcr {notional:,.2f} \u20ac"
 
 init_state()
+cash, pos_df, invested, nav, cost_total, prices = portfolio_snapshot()
+upnl = invested - cost_total if cost_total else 0.0
 
 with st.sidebar:
-    st.title("🌐 ATLAS")
-    st.caption("Kapital · Risiko · Portfolio")
-    page = st.radio("Modul", ["💰 Kapital & Portfolio", "📊 Market Scanner", "📉 Risk Analytics", "⚡ Stress Tests",
-         "📜 Fixed Income", "💱 FX", "📋 Trade Journal", "✅ Compliance", "📄 Reports", "📰 News"], label_visibility="collapsed")
+    st.title("\U0001f310 ATLAS")
+    st.caption("Einfach \u00b7 Klar \u00b7 \u00dcbersichtlich")
+    page = st.radio(
+        "Men\u00fc",
+        ["\U0001f3e0 Mein Depot", "\U0001f6d2 Kaufen / Verkaufen", "\U0001f4c9 Risiko", "\U0001f50d M\u00e4rkte", "\U0001f4f0 News & Mehr"],
+        label_visibility="collapsed",
+    )
     st.divider()
-    total_nav = 0.0
-    total_cash = 0.0
-    for bn in st.session_state.books:
-        c, _, inv, nav, _, _ = book_nav(bn)
-        total_nav += nav
-        total_cash += c
-    st.metric("Gesamt-NAV", f"{total_nav:,.2f} €")
-    st.caption(f"davon Cash: {total_cash:,.2f} €")
-    if st.button("🔄 Kurse & Cache aktualisieren"):
+    st.metric("Gesamtwert", f"{nav:,.2f} \u20ac")
+    st.caption(f"Bargeld: {cash:,.2f} \u20ac")
+    if upnl:
+        st.caption(f"Gewinn/Verlust: {upnl:+,.2f} \u20ac")
+    if st.button("\U0001f504 Kurse aktualisieren"):
         st.cache_data.clear()
         st.rerun()
-    st.caption(f"{NOW.strftime('%d.%m.%Y %H:%M')} · Yahoo Finance · Keine Anlageberatung")
+    st.caption(NOW.strftime("%d.%m.%Y %H:%M"))
 
-if page == "💰 Kapital & Portfolio":
-    st.header("Kapital & Portfolio")
-    st.write("Echtes Geld: Cash, Stückzahlen, Marktwert, P&L. Käufe belasten Cash, Verkäufe erhöhen Cash.")
-    books = list(st.session_state.books.keys())
-    c1, c2 = st.columns([2, 1])
-    with c1:
-        active = st.selectbox("Buch", books, index=books.index(st.session_state.active_book) if st.session_state.active_book in books else 0)
-        st.session_state.active_book = active
-    with c2:
-        nb = st.text_input("Neues Buch", placeholder="z. B. Satellite")
-        if st.button("Buch anlegen") and nb and nb not in st.session_state.books:
-            st.session_state.books[nb] = {}
-            st.session_state.cash[nb] = 0.0
-            st.session_state.active_book = nb
-            st.rerun()
-    st.subheader("Cash / Einzahlung")
-    cc1, cc2, cc3 = st.columns([1, 1, 1])
-    with cc1:
-        deposit = st.number_input("Betrag €", min_value=0.0, value=1000.0, step=100.0, key="dep_amt")
-    with cc2:
-        st.write(""); st.write("")
-        if st.button("➕ Einzahlen"):
-            st.session_state.cash[active] = float(st.session_state.cash.get(active, 0)) + deposit
-            st.session_state.trades.append({"Zeit": NOW.strftime("%Y-%m-%d %H:%M"), "Buch": active, "Ticker": "CASH", "Seite": "DEPOSIT", "Qty": 1, "Preis": deposit, "Notional": deposit, "Notiz": "Einzahlung"})
-            st.rerun()
-    with cc3:
-        st.write(""); st.write("")
-        if st.button("➖ Abheben") and deposit <= float(st.session_state.cash.get(active, 0)):
-            st.session_state.cash[active] = float(st.session_state.cash.get(active, 0)) - deposit
-            st.session_state.trades.append({"Zeit": NOW.strftime("%Y-%m-%d %H:%M"), "Buch": active, "Ticker": "CASH", "Seite": "WITHDRAW", "Qty": 1, "Preis": deposit, "Notional": deposit, "Notiz": "Auszahlung"})
-            st.rerun()
-    cash, pos_df, invested, nav, cost_total, prices = book_nav(active)
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Cash", f"{cash:,.2f} €")
-    m2.metric("Investiert", f"{invested:,.2f} €")
-    m3.metric("NAV (Gesamt)", f"{nav:,.2f} €")
-    upnl = invested - cost_total if cost_total else 0.0
-    m4.metric("Unreal. P&L", f"{upnl:,.2f} €", delta=f"{(upnl/cost_total*100) if cost_total else 0:.1f} %")
-    st.subheader("Kaufen / Verkaufen")
-    t1, t2, t3, t4, t5 = st.columns([2, 1, 1, 1, 1])
-    with t1:
-        ticker = st.selectbox("Ticker", [""] + sorted(ALL_UNIVERSE.keys()), format_func=lambda x: f"{x} – {ALL_UNIVERSE.get(x,'')}" if x else "—", key="trade_t")
-    with t2:
-        side = st.selectbox("Seite", ["BUY", "SELL"], key="trade_side")
-    with t3:
-        qty = st.number_input("Stück", min_value=0.01, value=1.0, step=1.0, key="trade_qty")
-    with t4:
-        use_mkt = st.checkbox("Marktpreis", value=True)
-        manual_px = st.number_input("Preis", min_value=0.01, value=100.0, step=0.01, key="trade_px", disabled=use_mkt)
-    with t5:
-        st.write(""); st.write("")
-        exec_btn = st.button("Order ausführen", type="primary")
-    if exec_btn and ticker:
-        px = get_last_price(ticker) if use_mkt else manual_px
-        if px != px or px <= 0:
-            st.error("Kein gültiger Preis verfügbar.")
-        else:
-            notional = qty * px
-            holdings = st.session_state.books[active]
-            cash_now = float(st.session_state.cash.get(active, 0))
-            if side == "BUY":
-                if notional > cash_now + 1e-6:
-                    st.error(f"Nicht genug Cash ({cash_now:,.2f} €), benötigt {notional:,.2f} €.")
-                else:
-                    prev = holdings.get(ticker, {"qty": 0.0, "avg_cost": 0.0})
-                    old_q, old_c = float(prev["qty"]), float(prev["avg_cost"])
-                    new_q = old_q + qty
-                    new_avg = ((old_q * old_c) + notional) / new_q if new_q > 0 else px
-                    holdings[ticker] = {"qty": new_q, "avg_cost": new_avg}
-                    st.session_state.cash[active] = cash_now - notional
-                    st.session_state.trades.append({"Zeit": NOW.strftime("%Y-%m-%d %H:%M"), "Buch": active, "Ticker": ticker, "Seite": "BUY", "Qty": qty, "Preis": px, "Notional": notional, "Notiz": ""})
-                    st.success(f"Gekauft: {qty} × {ticker} @ {px:.2f} = {notional:,.2f} €")
-                    st.rerun()
-            else:
-                prev = holdings.get(ticker, {"qty": 0.0, "avg_cost": 0.0})
-                old_q = float(prev["qty"])
-                if qty > old_q + 1e-9:
-                    st.error(f"Nur {old_q} Stück vorhanden.")
-                else:
-                    new_q = old_q - qty
-                    if new_q < 1e-9:
-                        holdings.pop(ticker, None)
-                    else:
-                        holdings[ticker] = {"qty": new_q, "avg_cost": float(prev["avg_cost"])}
-                    st.session_state.cash[active] = cash_now + notional
-                    st.session_state.trades.append({"Zeit": NOW.strftime("%Y-%m-%d %H:%M"), "Buch": active, "Ticker": ticker, "Seite": "SELL", "Qty": qty, "Preis": px, "Notional": notional, "Notiz": ""})
-                    st.success(f"Verkauft: {qty} × {ticker} @ {px:.2f} = {notional:,.2f} €")
-                    st.rerun()
-    st.subheader(f"Positionen – {active}")
+if page == "\U0001f3e0 Mein Depot":
+    st.header("Mein Depot")
+    if not st.session_state.holdings and cash >= 9999:
+        st.success("Willkommen! Du startest mit **10.000 \u20ac** Bargeld.")
+        st.markdown("""
+**So geht's in 3 Schritten:**
+1. Gehe zu **\U0001f6d2 Kaufen / Verkaufen**
+2. W\u00e4hle einen Titel (z. B. SPY oder EUNL.DE)
+3. Gib an, wie viel Euro du anlegen willst \u2192 **Kaufen**
+        """)
+    a, b, c, d = st.columns(4)
+    a.metric("Gesamtwert", f"{nav:,.2f} \u20ac")
+    b.metric("Bargeld", f"{cash:,.2f} \u20ac")
+    c.metric("Investiert", f"{invested:,.2f} \u20ac")
+    d.metric("Gewinn/Verlust", f"{upnl:+,.2f} \u20ac", delta=f"{(upnl/cost_total*100) if cost_total else 0:.1f} %")
+    st.subheader("Deine Positionen")
     if pos_df.empty:
-        st.info("Keine Positionen. Zahle Cash ein und kaufe Titel.")
+        st.info("Noch keine Positionen. Kaufe deinen ersten Titel unter **Kaufen / Verkaufen**.")
     else:
-        fmt = {"Stück": "{:.4g}", "Ø Einkauf": "{:,.2f}", "Kurs": "{:,.2f}", "Marktwert €": "{:,.2f}", "Kosten €": "{:,.2f}", "P&L €": "{:,.2f}", "P&L %": "{:.1f}", "Gewicht %": "{:.1f}"}
-        st.dataframe(pos_df.style.format(fmt, na_rep="—"), use_container_width=True, hide_index=True)
-        st.plotly_chart(px.pie(pos_df, values="Marktwert €", names="Ticker", title=f"Allokation – {active}"), use_container_width=True)
-        ac = pos_df.groupby("Asset Class")["Marktwert €"].sum().reset_index()
-        st.plotly_chart(px.bar(ac, x="Asset Class", y="Marktwert €", title="Asset-Class"), use_container_width=True)
-    if len(st.session_state.books) > 1 and active != "Core":
-        if st.button("Buch löschen", type="secondary"):
-            del st.session_state.books[active]
-            st.session_state.cash.pop(active, None)
-            st.session_state.active_book = "Core"
+        show = pos_df[["Titel", "Name", "St\u00fcck", "Kurs", "Wert \u20ac", "Gewinn/Verlust \u20ac", "Gewinn/Verlust %", "Anteil %"]].copy()
+        st.dataframe(
+            show.style.format({
+                "St\u00fcck": "{:.4g}", "Kurs": "{:,.2f}", "Wert \u20ac": "{:,.2f}",
+                "Gewinn/Verlust \u20ac": "{:+,.2f}", "Gewinn/Verlust %": "{:+.1f}", "Anteil %": "{:.1f}",
+            }, na_rep="\u2014"),
+            use_container_width=True, hide_index=True,
+        )
+        col1, col2 = st.columns(2)
+        with col1:
+            st.plotly_chart(px.pie(pos_df, values="Wert \u20ac", names="Titel", title="Aufteilung"), use_container_width=True)
+        with col2:
+            st.plotly_chart(px.bar(pos_df, x="Titel", y="Gewinn/Verlust \u20ac", title="Gewinn/Verlust je Titel", color="Gewinn/Verlust \u20ac", color_continuous_scale="RdYlGn"), use_container_width=True)
+    with st.expander("Bargeld einzahlen oder abheben"):
+        amt = st.number_input("Betrag in \u20ac", min_value=0.0, value=1000.0, step=100.0)
+        x, y = st.columns(2)
+        if x.button("\u2795 Einzahlen", use_container_width=True):
+            st.session_state.cash = float(st.session_state.cash) + amt
+            st.session_state.trades.append({"Zeit": NOW.strftime("%d.%m.%Y %H:%M"), "Art": "Einzahlung", "Titel": "\u2014", "St\u00fcck": 0, "Preis": 0, "Betrag \u20ac": amt})
             st.rerun()
+        if y.button("\u2796 Abheben", use_container_width=True):
+            if amt <= float(st.session_state.cash):
+                st.session_state.cash = float(st.session_state.cash) - amt
+                st.session_state.trades.append({"Zeit": NOW.strftime("%d.%m.%Y %H:%M"), "Art": "Auszahlung", "Titel": "\u2014", "St\u00fcck": 0, "Preis": 0, "Betrag \u20ac": amt})
+                st.rerun()
+            else:
+                st.error("Nicht genug Bargeld.")
+    if st.session_state.trades:
+        with st.expander("Letzte Transaktionen"):
+            st.dataframe(pd.DataFrame(st.session_state.trades[::-1][:20]), use_container_width=True, hide_index=True)
 
-elif page == "📊 Market Scanner":
-    st.header("Market Scanner")
-    scope = st.radio("Universum", ["Aktien", "ETFs", "Rohstoffe", "Alles"], horizontal=True)
-    uni = {"Aktien": STOCKS, "ETFs": ETFS, "Rohstoffe": COMMODITIES, "Alles": ALL_UNIVERSE}[scope]
-    limit = st.slider("Max. Symbole", 20, min(120, len(uni)), 40, 10)
-    tickers = list(uni.keys())[:limit]
-    rows, prog = [], st.progress(0, text="Lade …")
-    for i, t in enumerate(tickers):
-        m = single_metrics(t, uni.get(t, t), ASSET_CLASS.get(t, "Other"))
-        if m: rows.append(m)
-        prog.progress((i + 1) / len(tickers), text=t)
-    prog.empty()
-    if rows:
-        df = pd.DataFrame(rows).sort_values("Score", ascending=False).reset_index(drop=True)
-        st.dataframe(df, use_container_width=True, height=500)
-        pick = st.selectbox("Chart", df["Ticker"].tolist())
-        h = fetch_history(pick, "max")
-        if not h.empty: st.plotly_chart(px.line(h, y="Close", title=pick), use_container_width=True)
+elif page == "\U0001f6d2 Kaufen / Verkaufen":
+    st.header("Kaufen / Verkaufen")
+    st.caption(f"Verf\u00fcgbares Bargeld: **{cash:,.2f} \u20ac**")
+    mode = st.radio("Was m\u00f6chtest du tun?", ["Kaufen", "Verkaufen"], horizontal=True)
+    if mode == "Kaufen":
+        st.markdown("**Beliebte Titel \u2013 tippe zum Ausw\u00e4hlen:**")
+        cols = st.columns(5)
+        chosen = st.session_state.get("pick_ticker", "")
+        for i, t in enumerate(QUICK):
+            if cols[i % 5].button(t, key=f"q_{t}", use_container_width=True):
+                st.session_state.pick_ticker = t
+                chosen = t
+                st.rerun()
+        ticker = st.selectbox(
+            "Oder Titel suchen",
+            [""] + sorted(ALL_UNIVERSE.keys()),
+            index=(sorted(ALL_UNIVERSE.keys()).index(chosen) + 1) if chosen in ALL_UNIVERSE else 0,
+            format_func=lambda x: f"{x} \u2013 {ALL_UNIVERSE.get(x, '')}" if x else "Titel w\u00e4hlen \u2026",
+            key="buy_ticker",
+        )
+        if ticker:
+            px = get_last_price(ticker)
+            if px != px or px <= 0:
+                st.error("Kurs gerade nicht verf\u00fcgbar. Anderen Titel w\u00e4hlen oder sp\u00e4ter erneut versuchen.")
+            else:
+                st.info(f"**{ALL_UNIVERSE.get(ticker, ticker)}** \u00b7 aktueller Kurs: **{px:,.2f}** ({ticker_currency(ticker)})")
+                how = st.radio("Eingabe", ["Betrag in \u20ac", "Anzahl St\u00fcck"], horizontal=True, key="buy_how")
+                if how == "Betrag in \u20ac":
+                    euro = st.number_input("Wie viel Euro anlegen?", min_value=1.0, value=min(1000.0, max(1.0, cash)), step=50.0)
+                    qty = euro / px
+                    st.caption(f"\u2248 **{qty:.4g} St\u00fcck** zu je {px:,.2f}")
+                else:
+                    qty = st.number_input("Anzahl St\u00fcck", min_value=0.01, value=1.0, step=1.0)
+                    euro = qty * px
+                    st.caption(f"\u2248 **{euro:,.2f} \u20ac**")
+                if st.button("\u2713 Kaufen", type="primary", use_container_width=True):
+                    ok, msg = do_buy(ticker, qty, px)
+                    if ok:
+                        st.success(msg)
+                        st.balloons()
+                        st.rerun()
+                    else:
+                        st.error(msg)
+    else:
+        owned = [t for t, h in st.session_state.holdings.items() if float(h.get("qty", 0)) > 0]
+        if not owned:
+            st.warning("Du hast noch nichts zum Verkaufen. Kaufe zuerst einen Titel.")
+        else:
+            ticker = st.selectbox(
+                "Position verkaufen",
+                owned,
+                format_func=lambda x: f"{x} \u2013 {ALL_UNIVERSE.get(x, x)} ({st.session_state.holdings[x]['qty']:.4g} St\u00fcck)",
+            )
+            px = get_last_price(ticker)
+            max_q = float(st.session_state.holdings[ticker]["qty"])
+            if px != px:
+                st.error("Kurs nicht verf\u00fcgbar.")
+            else:
+                st.info(f"Kurs: **{px:,.2f}** \u00b7 max. {max_q:.4g} St\u00fcck")
+                qty = st.slider("St\u00fcck verkaufen", 0.01, float(max_q), float(max_q), 0.01)
+                st.caption(f"Erl\u00f6s \u2248 **{qty * px:,.2f} \u20ac**")
+                if st.button("\u2713 Verkaufen", type="primary", use_container_width=True):
+                    ok, msg = do_sell(ticker, qty, px)
+                    if ok:
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
 
-elif page == "📉 Risk Analytics":
-    st.header("Risk Analytics")
-    book_name = st.selectbox("Buch", list(st.session_state.books.keys()), key="rb")
-    weights = weights_from_book(book_name)
+elif page == "\U0001f4c9 Risiko":
+    st.header("Risiko-\u00dcbersicht")
+    weights = holdings_to_weights(st.session_state.holdings, prices)
     if not weights:
-        st.warning("Buch hat keine bewertbaren Positionen."); st.stop()
-    period = st.selectbox("Historie", ["1y", "2y", "3y", "5y"], index=2)
-    alpha = st.select_slider("VaR-Konfidenz", [0.01, 0.025, 0.05, 0.10], 0.05, format_func=lambda x: f"{int((1-x)*100)}%")
-    _, _, _, nav, _, _ = book_nav(book_name)
-    with st.spinner("Berechne …"):
-        port_rets, rets_mat = portfolio_returns(weights, period)
+        st.warning("Lege zuerst Positionen an, dann siehst du hier das Risiko.")
+        st.stop()
+    st.caption("Einfache Kennzahlen auf Basis der letzten 3 Jahre.")
+    with st.spinner("Berechne \u2026"):
+        port_rets, rets_mat = portfolio_returns(weights, "3y")
     if port_rets.empty:
-        st.error("Nicht genug Historie."); st.stop()
+        st.error("Zu wenig Kursdaten f\u00fcr die Berechnung.")
+        st.stop()
     ann_ret = port_rets.mean() * 252
     ann_vol = port_rets.std(ddof=1) * np.sqrt(252)
     sharpe = ann_ret / ann_vol if ann_vol > 0 else np.nan
-    hvar, hcvar = historical_var_cvar(port_rets, alpha)
-    pvar = parametric_var(port_rets, alpha)
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Rendite p.a.", f"{ann_ret*100:.1f}%"); c2.metric("Vol p.a.", f"{ann_vol*100:.1f}%")
-    c3.metric("Sharpe", f"{sharpe:.2f}"); c4.metric("VaR 1d", f"{hvar*100:.2f}%"); c5.metric("CVaR 1d", f"{hcvar*100:.2f}%")
-    st.caption(f"NAV {nav:,.2f} € → VaR ≈ {hvar*nav:,.2f} € · CVaR ≈ {hcvar*nav:,.2f} €")
+    hvar, hcvar = historical_var_cvar(port_rets, 0.05)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Erwartete Rendite / Jahr", f"{ann_ret*100:.1f} %")
+    m2.metric("Schwankung / Jahr", f"{ann_vol*100:.1f} %")
+    m3.metric("Sharpe-Ratio", f"{sharpe:.2f}")
+    m4.metric("Tagesrisiko (VaR 95%)", f"{hvar*100:.2f} %")
+    st.caption(f"Bei {nav:,.0f} \u20ac Gesamtwert: an einem schlechten Tag ca. **{hvar*nav:,.0f} \u20ac** Verlust m\u00f6glich (95 %-VaR).")
     eq = (1 + port_rets).cumprod()
-    fig = go.Figure(); fig.add_trace(go.Scatter(x=eq.index, y=eq.values, name="Portfolio")); fig.update_layout(title="Wertentwicklung", height=340)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=eq.index, y=eq.values, name="Depot", fill="tozeroy"))
+    fig.update_layout(title="Wertentwicklung (indexiert)", height=320, margin=dict(t=40, b=20))
     st.plotly_chart(fig, use_container_width=True)
-    st.subheader("Contribution to Risk")
-    ctr = component_risk(weights, rets_mat)
-    if not ctr.empty:
-        st.dataframe(ctr, use_container_width=True)
-        st.plotly_chart(px.bar(ctr, x="Ticker", y="Risk Contribution %"), use_container_width=True)
-    if not rets_mat.empty and rets_mat.shape[1] >= 2:
-        st.subheader("Korrelation")
-        st.plotly_chart(px.imshow(rets_mat.corr(), text_auto=".2f", color_continuous_scale="RdBu_r", zmin=-1, zmax=1), use_container_width=True)
-    st.subheader("Monte-Carlo (1J)")
-    mc = monte_carlo_portfolio(port_rets, 5000, 252)
-    if not mc.empty:
-        p5, p50, p95 = np.percentile(mc["Final Return"], [5, 50, 95])
-        a, b, c = st.columns(3)
-        a.metric("5%", f"{p5*100:.1f}% / {nav*(1+p5):,.0f} €")
-        b.metric("Median", f"{p50*100:.1f}% / {nav*(1+p50):,.0f} €")
-        c.metric("95%", f"{p95*100:.1f}% / {nav*(1+p95):,.0f} €")
-        fig = px.histogram(mc, x="Final Return", nbins=50); fig.add_vline(x=p5, line_dash="dash", line_color="red")
-        st.plotly_chart(fig, use_container_width=True)
+    with st.expander("Was passiert bei einem Crash? (Stress-Test)"):
+        preset = st.selectbox("Szenario", ["B\u00f6rsencrash \u221240 %", "Tech-Ausverkauf", "Milde Rezession", "Zins +1,5 %"])
+        shocks_map = {
+            "B\u00f6rsencrash \u221240 %": {"Equity": -0.40, "Equity ETF": -0.38, "Fixed Income": 0.05, "Commodity": -0.20, "Real Estate": -0.35},
+            "Tech-Ausverkauf": {"QQQ": -0.25, "NVDA": -0.35, "XLK": -0.22, "SMH": -0.30, "Equity": -0.08, "Equity ETF": -0.10},
+            "Milde Rezession": {"Equity": -0.18, "Equity ETF": -0.16, "Fixed Income": 0.04, "Commodity": -0.10},
+            "Zins +1,5 %": {},
+        }
+        shocks = shocks_map[preset]
+        if preset == "Zins +1,5 %":
+            fi = fixed_income_impact(weights, 150)
+            st.metric("Auswirkung auf Anleihen", f"{fi['total_impact']*100:.2f} % \u2192 {fi['total_impact']*nav:,.0f} \u20ac")
+        else:
+            res = stress_test(weights, shocks)
+            imp = res["portfolio_impact"]
+            st.metric("Gesch\u00e4tzter Depot-Verlust", f"{imp*100:.1f} % \u2192 {imp*nav:,.0f} \u20ac")
+            if not res["details"].empty:
+                st.dataframe(res["details"].sort_values("Beitrag %"), use_container_width=True, hide_index=True)
+    with st.expander("Monte-Carlo: m\u00f6gliche Ergebnisse in 1 Jahr"):
+        mc = monte_carlo_portfolio(port_rets, 3000, 252)
+        if not mc.empty:
+            p5, p50, p95 = np.percentile(mc["Final Return"], [5, 50, 95])
+            a, b, c = st.columns(3)
+            a.metric("Schlechtes Jahr (5 %)", f"{nav*(1+p5):,.0f} \u20ac")
+            b.metric("Mittleres Jahr", f"{nav*(1+p50):,.0f} \u20ac")
+            c.metric("Gutes Jahr (95 %)", f"{nav*(1+p95):,.0f} \u20ac")
 
-elif page == "⚡ Stress Tests":
-    st.header("Stress Tests")
-    book_name = st.selectbox("Buch", list(st.session_state.books.keys()), key="sb")
-    weights = weights_from_book(book_name)
-    _, _, _, nav, _, _ = book_nav(book_name)
-    if not weights:
-        st.warning("Buch leer."); st.stop()
-    PRESETS = {"2008 Equity Crash": {"Equity": -0.40, "Equity ETF": -0.38, "Fixed Income": 0.08, "Commodity": -0.25, "Real Estate": -0.35}, "Inflation Spike": {"Equity": -0.12, "Fixed Income": -0.08, "Commodity": 0.25, "Real Estate": 0.05}, "Tech Sell-off": {"QQQ": -0.25, "NVDA": -0.35, "XLK": -0.22, "SMH": -0.30, "Equity": -0.08}, "Oil +50%": {"CL=F": 0.50, "USO": 0.48, "XLE": 0.20, "Equity": -0.05}, "Mild Recession": {"Equity": -0.18, "Equity ETF": -0.16, "Fixed Income": 0.04, "Commodity": -0.10}}
-    preset = st.selectbox("Szenario", list(PRESETS.keys()) + ["Rate Shock", "Eigenes"])
-    rate_bp = st.slider("Zins-Schock (bp)", -200, 300, 150, 10)
-    if preset in ("Rate Shock", "Eigenes"):
-        fi = fixed_income_impact(weights, rate_bp)
-        st.metric(f"FI Impact {rate_bp} bp", f"{fi['total_impact']*100:.2f}% → {fi['total_impact']*nav:,.2f} €")
-        if not fi["details"].empty: st.dataframe(fi["details"], use_container_width=True)
-    if preset == "Eigenes":
-        s_eq = st.number_input("Equity %", -50.0, 30.0, -15.0) / 100
-        s_fi = st.number_input("Fixed Income %", -30.0, 20.0, -5.0) / 100
-        s_com = st.number_input("Commodity %", -40.0, 50.0, 0.0) / 100
-        shocks = {"Equity": s_eq, "Equity ETF": s_eq, "Fixed Income": s_fi, "Commodity": s_com, "Real Estate": s_eq * 0.7}
-    elif preset in PRESETS: shocks = PRESETS[preset]
-    else: shocks = {}
-    if shocks:
-        res = stress_test(weights, shocks)
-        impact = res["portfolio_impact"]
-        st.metric("Portfolio Impact", f"{impact*100:.2f}% → {impact*nav:,.2f} €")
-        st.dataframe(res["details"].sort_values("Beitrag %"), use_container_width=True)
-
-elif page == "📜 Fixed Income":
-    st.header("Fixed Income")
-    rows = []
-    for t in BOND_DURATION:
-        m = single_metrics(t, ETFS.get(t, t), "Fixed Income")
-        if m:
-            m["Duration"] = BOND_DURATION[t]; m["Impact +100bp %"] = -BOND_DURATION[t]; rows.append(m)
+elif page == "\U0001f50d M\u00e4rkte":
+    st.header("M\u00e4rkte ansehen")
+    scope = st.radio("Bereich", ["Aktien", "ETFs", "Rohstoffe"], horizontal=True)
+    uni = {"Aktien": STOCKS, "ETFs": ETFS, "Rohstoffe": COMMODITIES}[scope]
+    limit = st.slider("Anzahl Titel", 10, 60, 25, 5)
+    if st.button("Laden", type="primary") or "mkt_loaded" not in st.session_state:
+        st.session_state.mkt_loaded = True
+        rows, bar = [], st.progress(0, text="Lade Kurse \u2026")
+        keys = list(uni.keys())[:limit]
+        for i, t in enumerate(keys):
+            m = single_metrics(t, uni[t], ASSET_CLASS.get(t, "Other"))
+            if m:
+                rows.append(m)
+            bar.progress((i + 1) / len(keys), text=t)
+        bar.empty()
+        st.session_state.mkt_rows = rows
+    rows = st.session_state.get("mkt_rows", [])
     if rows:
-        df = pd.DataFrame(rows)
-        st.dataframe(df[["Ticker", "Anlage", "Kurs", "Duration", "Impact +100bp %", "Volatilität %", "1J Rendite %", "Sharpe"]], use_container_width=True)
+        df = pd.DataFrame(rows).sort_values("Score", ascending=False)
+        st.dataframe(
+            df[["Ticker", "Anlage", "Kurs", "1J Rendite %", "Volatilit\u00e4t %", "Sharpe", "Score", "Risiko"]],
+            use_container_width=True, height=420, hide_index=True,
+        )
+        pick = st.selectbox("Chart anzeigen", df["Ticker"].tolist())
+        h = fetch_history(pick, "2y")
+        if not h.empty:
+            st.plotly_chart(px.line(h, y="Close", title=f"{pick} \u2013 2 Jahre"), use_container_width=True)
 
-elif page == "💱 FX":
-    st.header("FX Exposure")
-    for bname in st.session_state.books:
-        cash, pos_df, inv, nav, _, _ = book_nav(bname)
-        if pos_df.empty and cash <= 0: continue
-        st.subheader(f"Buch: {bname}")
-        ccy_exp = {"EUR": cash}
+else:
+    st.header("News & Mehr")
+    tab1, tab2, tab3 = st.tabs(["Nachrichten", "Report", "Zur\u00fccksetzen"])
+    with tab1:
+        @st.cache_data(ttl=300, show_spinner=False)
+        def rss_news():
+            if not feedparser:
+                return pd.DataFrame()
+            feeds = [
+                ("BBC", "https://feeds.bbci.co.uk/news/world/rss.xml"),
+                ("Fed", "https://www.federalreserve.gov/feeds/press_all.xml"),
+                ("ECB", "https://www.ecb.europa.eu/rss/press.html"),
+            ]
+            rows = []
+            cutoff = NOW - timedelta(days=2)
+            for src, url in feeds:
+                try:
+                    feed = feedparser.parse(url)
+                    for e in feed.entries[:15]:
+                        title = getattr(e, "title", "")
+                        link = getattr(e, "link", "")
+                        raw = getattr(e, "published_parsed", None) or getattr(e, "updated_parsed", None)
+                        dt = datetime(*raw[:6], tzinfo=timezone.utc).astimezone(TZ) if raw else None
+                        if dt and dt >= cutoff:
+                            rows.append({"Zeit": dt.strftime("%d.%m. %H:%M"), "Quelle": src, "Meldung": title, "Link": link})
+                except Exception:
+                    pass
+            return pd.DataFrame(rows)
+        news = rss_news()
+        if news.empty:
+            st.info("Keine aktuellen Meldungen geladen.")
+        else:
+            for _, r in news.head(20).iterrows():
+                st.markdown(f"**{r['Meldung']}**  \n{r['Quelle']} \u00b7 {r['Zeit']} \u00b7 [Link]({r['Link']})")
+                st.divider()
+    with tab2:
+        lines = [f"ATLAS Report \u2013 {NOW.strftime('%d.%m.%Y %H:%M')}", f"Gesamtwert: {nav:,.2f} \u20ac", f"Bargeld: {cash:,.2f} \u20ac", ""]
         if not pos_df.empty:
             for _, r in pos_df.iterrows():
-                c = r["Währung"]; mv = r["Marktwert €"] if r["Marktwert €"] == r["Marktwert €"] else 0
-                ccy_exp[c] = ccy_exp.get(c, 0) + mv
-        cdf = pd.DataFrame([{"Währung": k, "Exposure €": v, "Anteil %": v / nav * 100 if nav else 0} for k, v in sorted(ccy_exp.items(), key=lambda x: -x[1]) if v])
-        a, b = st.columns(2)
-        with a: st.dataframe(cdf, use_container_width=True, hide_index=True)
-        with b:
-            if not cdf.empty: st.plotly_chart(px.pie(cdf, values="Exposure €", names="Währung"), use_container_width=True)
-
-elif page == "📋 Trade Journal":
-    st.header("Trade Journal")
-    if st.session_state.trades:
-        st.dataframe(pd.DataFrame(st.session_state.trades), use_container_width=True, hide_index=True)
-        if st.button("Journal leeren"): st.session_state.trades = []; st.rerun()
-    else: st.info("Noch keine Trades.")
-
-elif page == "✅ Compliance":
-    st.header("Compliance")
-    lim = st.session_state.compliance_limits
-    a, b = st.columns(2)
-    lim["max_single_position"] = a.slider("Max Einzelposition", 0.05, 0.50, lim["max_single_position"], 0.01)
-    lim["max_asset_class"] = b.slider("Max Asset Class", 0.20, 1.0, lim["max_asset_class"], 0.05)
-    for bname in st.session_state.books:
-        cash, pos_df, inv, nav, _, _ = book_nav(bname)
-        if pos_df.empty: continue
-        st.subheader(bname); breaches = []
-        for _, r in pos_df.iterrows():
-            w = r["Gewicht %"] / 100
-            if w > lim["max_single_position"]: breaches.append(f"⚠️ {r['Ticker']}: {r['Gewicht %']:.1f}%")
-        ac_w = pos_df.groupby("Asset Class")["Gewicht %"].sum()
-        for ac, w in ac_w.items():
-            if w / 100 > lim["max_asset_class"]: breaches.append(f"⚠️ {ac}: {w:.1f}%")
-        if breaches:
-            for x in breaches: st.error(x)
-        else: st.success("Keine Verletzungen")
-
-elif page == "📄 Reports":
-    st.header("Reports")
-    lines = [f"ATLAS Report – {NOW.strftime('%Y-%m-%d %H:%M')}", "=" * 50, ""]
-    for bname in st.session_state.books:
-        cash, pos_df, inv, nav, cost, _ = book_nav(bname)
-        lines.append(f"BUCH: {bname}")
-        lines.append(f"  Cash: {cash:,.2f} € | Investiert: {inv:,.2f} € | NAV: {nav:,.2f} €")
-        lines.append("-" * 40)
-        if not pos_df.empty:
-            for _, r in pos_df.iterrows():
-                lines.append(f"  {r['Ticker']:10s} {r['Stück']:8.2f} Stk  MW {r['Marktwert €']:10,.2f} €  P&L {r['P&L €']:8,.2f} €")
-        lines.append("")
-    txt = "\n".join(lines)
-    st.text_area("Report", txt, height=360)
-    st.download_button("Download .txt", txt, file_name=f"atlas_report_{NOW.strftime('%Y%m%d')}.txt")
-
-elif page == "📰 News":
-    st.header("News")
-    @st.cache_data(ttl=300, show_spinner=False)
-    def rss_news():
-        if not feedparser: return pd.DataFrame(), "feedparser fehlt"
-        feeds = [("Reuters", "https://feeds.reuters.com/Reuters/worldNews"), ("BBC", "https://feeds.bbci.co.uk/news/world/rss.xml"), ("Fed", "https://www.federalreserve.gov/feeds/press_all.xml"), ("ECB", "https://www.ecb.europa.eu/rss/press.html"), ("SEC", "https://www.sec.gov/news/pressreleases.rss")]
-        rows, errs = [], []
-        cutoff = NOW - timedelta(days=2)
-        for src, url in feeds:
-            try:
-                feed = feedparser.parse(url)
-                for e in feed.entries[:25]:
-                    title = getattr(e, "title", ""); link = getattr(e, "link", "")
-                    summary = re.sub("<[^>]+>", " ", getattr(e, "summary", getattr(e, "description", "")))
-                    raw = getattr(e, "published_parsed", None) or getattr(e, "updated_parsed", None)
-                    dt = datetime(*raw[:6], tzinfo=timezone.utc).astimezone(TZ) if raw else None
-                    if dt and dt >= cutoff:
-                        rows.append({"Zeit": dt.strftime("%d.%m.%Y %H:%M"), "Quelle": src, "Meldung": title, "Kurzinfo": summary.strip()[:350], "Link": link, "dt": dt})
-            except Exception: errs.append(src)
-        df = pd.DataFrame(rows)
-        if not df.empty: df = df.sort_values("dt", ascending=False).drop_duplicates(subset=["Meldung"])
-        return df, (", ".join(errs) if errs else "")
-    news, status = rss_news()
-    if status: st.caption("Nicht erreichbar: " + status)
-    if news.empty: st.warning("Keine Meldungen")
-    else:
-        q = st.text_input("Filter", placeholder="Zinsen, KI, Öl …")
-        if q: news = news[news.apply(lambda r: q.lower() in (str(r.Meldung) + str(r.Kurzinfo)).lower(), axis=1)]
-        for _, r in news.head(35).iterrows():
-            with st.container(border=True):
-                st.markdown(f"**{r['Meldung']}**"); st.caption(f"{r['Quelle']} · {r['Zeit']}")
-                if r["Kurzinfo"]: st.write(r["Kurzinfo"])
-                if r["Link"]: st.markdown(f"[Quelle]({r['Link']})")
+                lines.append(f"{r['Titel']:10s}  {r['St\u00fcck']:8.2f} Stk  {r['Wert \u20ac']:10,.2f} \u20ac  G/V {r['Gewinn/Verlust \u20ac']:+,.2f} \u20ac")
+        txt = "\n".join(lines)
+        st.text_area("Report", txt, height=280)
+        st.download_button("Als Textdatei speichern", txt, file_name=f"atlas_{NOW.strftime('%Y%m%d')}.txt")
+    with tab3:
+        st.warning("Setzt Depot, Bargeld und Historie zur\u00fcck (10.000 \u20ac Startkapital).")
+        if st.button("Alles zur\u00fccksetzen", type="primary"):
+            st.session_state.holdings = {}
+            st.session_state.cash = 10000.0
+            st.session_state.trades = []
+            st.success("Zur\u00fcckgesetzt.")
+            st.rerun()
 
 st.divider()
-st.caption("ATLAS · Keine Anlageberatung · Kurse verzögert (Yahoo) · Session-lokal (nicht persistent auf Server)")
+st.caption("ATLAS \u00b7 Keine Anlageberatung \u00b7 Kurse von Yahoo Finance (verz\u00f6gert) \u00b7 Daten nur in dieser Browser-Session")
