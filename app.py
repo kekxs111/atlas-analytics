@@ -73,14 +73,39 @@ def export_state() -> dict:
     }
 
 def apply_state(data: dict) -> None:
-    st.session_state.cash = float(data.get("cash", 10000.0))
-    st.session_state.holdings = data.get("holdings") or {}
-    st.session_state.trades = data.get("trades") or []
+    try:
+        st.session_state.cash = float(data.get("cash", 10000.0))
+    except (TypeError, ValueError):
+        st.session_state.cash = 10000.0
+    holdings = data.get("holdings") or {}
+    if not isinstance(holdings, dict):
+        holdings = {}
+    clean = {}
+    for t, h in holdings.items():
+        if not isinstance(h, dict):
+            continue
+        try:
+            qty = float(h.get("qty", 0) or 0)
+            avg = float(h.get("avg_cost", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if qty > 0:
+            clean[str(t)] = {"qty": qty, "avg_cost": avg}
+    st.session_state.holdings = clean
+    trades = data.get("trades") or []
+    st.session_state.trades = trades if isinstance(trades, list) else []
     st.session_state.seen_welcome = bool(data.get("seen_welcome", False))
     pc = data.get("price_cache") or {}
     if "price_cache" not in st.session_state:
         st.session_state.price_cache = {}
-    st.session_state.price_cache.update({k: float(v) for k, v in pc.items() if v is not None})
+    if isinstance(pc, dict):
+        for k, v in pc.items():
+            try:
+                fv = float(v)
+                if fv == fv and fv > 0:
+                    st.session_state.price_cache[str(k)] = fv
+            except (TypeError, ValueError):
+                pass
 
 def save_to_disk() -> bool:
     try:
@@ -261,14 +286,20 @@ with st.sidebar:
     )
     up = st.file_uploader("\U0001f4c2 Depot laden", type=["json"], label_visibility="collapsed")
     if up is not None:
-        try:
-            data = json.loads(up.getvalue().decode("utf-8"))
-            apply_state(data)
-            persist()
-            st.success("Depot geladen.")
-            st.rerun()
-        except Exception:
-            st.error("Datei konnte nicht gelesen werden.")
+        sig = f"{up.name}:{getattr(up, 'size', 0)}"
+        if st.session_state.get("_upload_sig") != sig:
+            try:
+                data = json.loads(up.getvalue().decode("utf-8"))
+                if not isinstance(data, dict) or "cash" not in data:
+                    st.error("Ung\u00fcltige Depot-Datei.")
+                else:
+                    apply_state(data)
+                    persist()
+                    st.session_state._upload_sig = sig
+                    st.success("Depot geladen.")
+                    st.rerun()
+            except Exception:
+                st.error("Datei konnte nicht gelesen werden.")
     if SAVE_PATH.exists():
         st.caption("Auto-Speicherung aktiv")
     st.caption("\u00dcbungs-Depot \u00b7 kein echtes Geld")
