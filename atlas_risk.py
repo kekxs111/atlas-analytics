@@ -1,4 +1,4 @@
-"""ATLAS data layer – Yahoo Chart-API + Batch-Preise."""
+"""ATLAS data layer – Finnhub (optional) + Yahoo Chart-API + Batch."""
 from __future__ import annotations
 from typing import Dict, Iterable, Optional, Tuple
 import json
@@ -39,6 +39,21 @@ def _http_json(url: str, timeout: float = 12.0) -> dict:
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode("utf-8", errors="replace"))
+
+
+def _finnhub_token() -> str:
+    try:
+        from atlas_cloud import finnhub_key
+        return finnhub_key()
+    except Exception:
+        pass
+    try:
+        k = st.secrets.get("FINNHUB_API_KEY") or st.secrets.get("FINNHUB_KEY")  # type: ignore
+        if k:
+            return str(k).strip()
+    except Exception:
+        pass
+    return str(st.session_state.get("finnhub_key") or "").strip()
 
 
 def _yahoo_chart(ticker: str, range_: str = "5d", interval: str = "1d") -> Optional[dict]:
@@ -99,8 +114,26 @@ def _strip_tz(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
     return idx
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
-def _cached_last_price(ticker: str) -> float:
+@st.cache_data(ttl=900, show_spinner=False)
+def _cached_last_price(ticker: str, finnhub_tok: str = "") -> float:
+    if finnhub_tok:
+        try:
+            syms = [ticker]
+            if "." in ticker:
+                syms.append(ticker.split(".")[0])
+            for s in syms:
+                try:
+                    url = f"https://finnhub.io/api/v1/quote?symbol={urllib.request.quote(s)}&token={finnhub_tok}"
+                    data = _http_json(url, timeout=8.0)
+                    px = data.get("c") or data.get("pc")
+                    if px is not None:
+                        v = float(px)
+                        if v == v and v > 0:
+                            return v
+                except Exception:
+                    continue
+        except Exception:
+            pass
     for range_ in ("5d", "1mo", "3mo"):
         chart = _yahoo_chart(ticker, range_=range_, interval="1d")
         px = _price_from_chart(chart) if chart else float("nan")
@@ -121,9 +154,10 @@ def _cached_last_price(ticker: str) -> float:
 def get_last_price(ticker: str) -> float:
     if "price_cache" not in st.session_state:
         st.session_state.price_cache = {}
+    tok = _finnhub_token()
     px = float("nan")
     try:
-        px = float(_cached_last_price(ticker))
+        px = float(_cached_last_price(ticker, tok))
     except Exception:
         px = float("nan")
     if px == px and px > 0:
@@ -136,15 +170,15 @@ def get_last_price(ticker: str) -> float:
 
 
 def prefetch_prices(tickers: Iterable[str], max_workers: int = 6) -> Dict[str, float]:
-    """Mehrere Kurse parallel laden und in Session-Cache schreiben."""
     if "price_cache" not in st.session_state:
         st.session_state.price_cache = {}
     uniq = [t for t in dict.fromkeys(tickers) if t]
     out: Dict[str, float] = {}
+    tok = _finnhub_token()
 
     def _one(t: str) -> Tuple[str, float]:
         try:
-            return t, float(_cached_last_price(t))
+            return t, float(_cached_last_price(t, tok))
         except Exception:
             return t, float("nan")
 
