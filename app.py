@@ -1,20 +1,16 @@
 from __future__ import annotations
 import warnings
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
-try:
-    import feedparser
-except Exception:
-    feedparser = None
-from atlas_config import STOCKS, ETFS, COMMODITIES, BOND_DURATION, ALL_UNIVERSE, ASSET_CLASS, ticker_currency
+from atlas_config import STOCKS, ETFS, COMMODITIES, ALL_UNIVERSE, ASSET_CLASS
 from atlas_risk import (
     fetch_history, single_metrics, portfolio_returns, historical_var_cvar,
-    stress_test, monte_carlo_portfolio, fixed_income_impact,
+    stress_test, monte_carlo_portfolio,
     get_last_price, holdings_to_weights,
 )
 
@@ -158,10 +154,17 @@ def buy_package(pkg_name: str, euro: float):
     cash = float(st.session_state.cash)
     if euro > cash + 1e-6:
         return False, f"Du hast nur {cash:,.2f} \u20ac frei."
+    orders = []
+    total = 0.0
     for t, w in parts:
         spend = euro * w
         qty = spend / prices[t]
-        ok, msg = do_buy(t, qty, prices[t])
+        orders.append((t, qty, prices[t]))
+        total += qty * prices[t]
+    if total > cash + 1e-6:
+        return False, f"Du hast nur {cash:,.2f} \u20ac frei."
+    for t, qty, px in orders:
+        ok, msg = do_buy(t, qty, px)
         if not ok:
             return False, msg
     return True, f"Paket \u201e{pkg_name}\u201c f\u00fcr {euro:,.2f} \u20ac ist eingerichtet."
@@ -271,11 +274,15 @@ elif page == "\U0001f6d2 Anlegen":
     with tab_pkg:
         st.subheader("Ein Klick \u2013 fertig gemischt")
         st.caption("Wir kaufen f\u00fcr dich mehrere Bausteine auf einmal. Du musst nichts einzeln ausw\u00e4hlen.")
-        euro = st.number_input(
-            "Wie viel Euro soll das Paket kosten?",
-            min_value=100.0, max_value=max(100.0, cash),
-            value=min(2000.0, max(100.0, cash)), step=100.0, key="pkg_euro",
-        )
+        if cash < 100:
+            st.warning("F\u00fcr ein Paket brauchst du mindestens 100 \u20ac Bargeld. Erh\u00f6he das Spielgeld unter Start.")
+            euro = 0.0
+        else:
+            euro = st.number_input(
+                "Wie viel Euro soll das Paket kosten?",
+                min_value=100.0, max_value=float(cash),
+                value=min(2000.0, float(cash)), step=100.0, key="pkg_euro",
+            )
         for name, info in PACKAGES.items():
             with st.container(border=True):
                 st.markdown(f"### {name}")
@@ -284,7 +291,7 @@ elif page == "\U0001f6d2 Anlegen":
                     f"{int(w*100)} % {PRODUCT_BY_T.get(t, {}).get('name', t)}" for t, w in info["parts"]
                 )
                 st.caption(f"Enth\u00e4lt: {parts_txt}")
-                if st.button(f"Dieses Paket f\u00fcr {euro:,.0f} \u20ac kaufen", key=f"pkg_{name}", type="primary" if "Empfehlung" in name else "secondary"):
+                if euro >= 100 and st.button(f"Dieses Paket f\u00fcr {euro:,.0f} \u20ac kaufen", key=f"pkg_{name}", type="primary" if "Empfehlung" in name else "secondary"):
                     ok, msg = buy_package(name, euro)
                     if ok:
                         st.session_state.seen_welcome = True
@@ -358,7 +365,8 @@ elif page == "\U0001f6d2 Anlegen":
                 st.error("Kurs nicht verf\u00fcgbar.")
             else:
                 st.write(f"Aktueller Kurs: **{px:,.2f}**")
-                qty = st.slider("Wie viele Anteile verkaufen?", 0.01, float(max_q), float(max_q), 0.01)
+                step = 0.01 if max_q >= 0.02 else max(max_q / 10, 1e-6)
+                qty = st.slider("Wie viele Anteile verkaufen?", float(step), float(max_q), float(max_q), float(step))
                 st.caption(f"Du bekommst ungef\u00e4hr **{qty * px:,.2f} \u20ac** zur\u00fcck (wird zu Bargeld).")
                 if st.button("\u2713 Verkaufen", type="primary", use_container_width=True):
                     ok, msg = do_sell(ticker, qty, px)
