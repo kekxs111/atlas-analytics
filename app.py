@@ -1,6 +1,8 @@
 from __future__ import annotations
+import json
 import warnings
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
@@ -18,6 +20,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 st.set_page_config(page_title="ATLAS \u2013 Einfach anlegen", page_icon="\U0001f310", layout="wide", initial_sidebar_state="expanded")
 TZ = ZoneInfo("Europe/Berlin")
 NOW = datetime.now(TZ)
+SAVE_PATH = Path(__file__).resolve().parent / "atlas_save.json"
 
 PRODUCTS = [
     {"ticker": "EUNL.DE", "name": "Welt-Aktien", "tag": "Empfohlen zum Start",
@@ -58,9 +61,58 @@ PACKAGES = {
     },
 }
 
+def export_state() -> dict:
+    return {
+        "version": 1,
+        "saved_at": datetime.now(TZ).isoformat(),
+        "cash": float(st.session_state.get("cash", 10000.0)),
+        "holdings": st.session_state.get("holdings", {}),
+        "trades": st.session_state.get("trades", []),
+        "seen_welcome": bool(st.session_state.get("seen_welcome", False)),
+        "price_cache": st.session_state.get("price_cache", {}),
+    }
+
+def apply_state(data: dict) -> None:
+    st.session_state.cash = float(data.get("cash", 10000.0))
+    st.session_state.holdings = data.get("holdings") or {}
+    st.session_state.trades = data.get("trades") or []
+    st.session_state.seen_welcome = bool(data.get("seen_welcome", False))
+    pc = data.get("price_cache") or {}
+    if "price_cache" not in st.session_state:
+        st.session_state.price_cache = {}
+    st.session_state.price_cache.update({k: float(v) for k, v in pc.items() if v is not None})
+
+def save_to_disk() -> bool:
+    try:
+        SAVE_PATH.write_text(json.dumps(export_state(), ensure_ascii=False, indent=2), encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+def load_from_disk() -> bool:
+    try:
+        if not SAVE_PATH.exists():
+            return False
+        data = json.loads(SAVE_PATH.read_text(encoding="utf-8"))
+        apply_state(data)
+        return True
+    except Exception:
+        return False
+
+def persist() -> None:
+    save_to_disk()
+
 def init_state():
+    if "price_cache" not in st.session_state:
+        st.session_state.price_cache = {}
     if "holdings" not in st.session_state:
-        st.session_state.holdings = {}
+        if load_from_disk():
+            pass
+        else:
+            st.session_state.holdings = {}
+            st.session_state.cash = 10000.0
+            st.session_state.trades = []
+            st.session_state.seen_welcome = False
     if "cash" not in st.session_state:
         st.session_state.cash = 10000.0
     if "trades" not in st.session_state:
@@ -73,6 +125,7 @@ def init_state():
         c = st.session_state.cash
         st.session_state.cash = float(c.get(active, 10000.0)) if isinstance(c, dict) else float(c or 10000)
         del st.session_state.books
+        persist()
 
 def portfolio_snapshot():
     cash = float(st.session_state.cash)
@@ -84,8 +137,10 @@ def portfolio_snapshot():
         if qty <= 0:
             continue
         px = get_last_price(t)
+        if not (px == px and px > 0) and avg > 0:
+            px = avg
         prices[t] = px
-        mv = qty * px if px == px else float("nan")
+        mv = qty * px if px == px and px > 0 else float("nan")
         cost = qty * avg
         pnl = (mv - cost) if mv == mv else float("nan")
         invested += mv if mv == mv else 0.0
@@ -122,6 +177,7 @@ def do_buy(ticker: str, qty: float, px: float):
         "Zeit": NOW.strftime("%d.%m.%Y %H:%M"), "Art": "Kauf", "Was": name,
         "K\u00fcrzel": ticker, "St\u00fcck": qty, "Preis": px, "Betrag \u20ac": notional,
     })
+    persist()
     return True, f"Geschafft! Du hast {name} f\u00fcr {notional:,.2f} \u20ac gekauft."
 
 def do_sell(ticker: str, qty: float, px: float):
@@ -141,6 +197,7 @@ def do_sell(ticker: str, qty: float, px: float):
         "Zeit": NOW.strftime("%d.%m.%Y %H:%M"), "Art": "Verkauf", "Was": name,
         "K\u00fcrzel": ticker, "St\u00fcck": qty, "Preis": px, "Betrag \u20ac": notional,
     })
+    persist()
     return True, f"Verkauft: {name} \u00b7 Du erh\u00e4ltst ca. {notional:,.2f} \u20ac zur\u00fcck."
 
 def buy_package(pkg_name: str, euro: float):
@@ -167,6 +224,7 @@ def buy_package(pkg_name: str, euro: float):
         ok, msg = do_buy(t, qty, px)
         if not ok:
             return False, msg
+    persist()
     return True, f"Paket \u201e{pkg_name}\u201c f\u00fcr {euro:,.2f} \u20ac ist eingerichtet."
 
 init_state()
@@ -188,9 +246,31 @@ with st.sidebar:
     if has_positions:
         color = "\U0001f7e2" if upnl >= 0 else "\U0001f534"
         st.caption(f"{color} Bisheriger Gewinn/Verlust: {upnl:+,.2f} \u20ac")
-    if st.button("\U0001f504 Zahlen aktualisieren"):
+    if st.button("\U0001f504 Kurse aktualisieren"):
         st.cache_data.clear()
         st.rerun()
+    st.divider()
+    st.caption("**Depot speichern / laden**")
+    st.download_button(
+        "\U0001f4be Depot herunterladen",
+        data=json.dumps(export_state(), ensure_ascii=False, indent=2),
+        file_name="atlas_depot.json",
+        mime="application/json",
+        use_container_width=True,
+        help="Speichert Bargeld, Positionen und letzte Kurse auf deinem Ger\u00e4t.",
+    )
+    up = st.file_uploader("\U0001f4c2 Depot laden", type=["json"], label_visibility="collapsed")
+    if up is not None:
+        try:
+            data = json.loads(up.getvalue().decode("utf-8"))
+            apply_state(data)
+            persist()
+            st.success("Depot geladen.")
+            st.rerun()
+        except Exception:
+            st.error("Datei konnte nicht gelesen werden.")
+    if SAVE_PATH.exists():
+        st.caption("Auto-Speicherung aktiv")
     st.caption("\u00dcbungs-Depot \u00b7 kein echtes Geld")
     st.caption(NOW.strftime("%d.%m.%Y %H:%M"))
 
@@ -216,11 +296,14 @@ if page == "\U0001f3e0 Start":
 Der Wert kann steigen oder fallen.\n\n
 **Gesamtwert** = Bargeld + aktueller Wert deiner Anteile.\n\n
 **Gewinn/Verlust** = Wie viel mehr oder weniger deine Anteile wert sind als beim Kauf.\n\n
-Das ist ein **\u00dcbungsprogramm**. Es kauft nichts Echtes und speichert nichts dauerhaft.
+Das ist ein **\u00dcbungsprogramm**. Es kauft nichts Echtes.\n\n
+Dein Depot wird **automatisch gespeichert** und du kannst es links unter
+\u201eDepot herunterladen\u201c auf dein Ger\u00e4t sichern und sp\u00e4ter wieder laden.
                 """
             )
         if st.button("Verstanden \u2013 weiter zum Anlegen", type="primary"):
             st.session_state.seen_welcome = True
+            persist()
             st.rerun()
     a, b, c, d = st.columns(4)
     a.metric("Gesamtwert", f"{nav:,.2f} \u20ac", help="Bargeld + Wert deiner Anlagen")
@@ -256,10 +339,12 @@ Das ist ein **\u00dcbungsprogramm**. Es kauft nichts Echtes und speichert nichts
         x, y = st.columns(2)
         if x.button("\u2795 Bargeld erh\u00f6hen", use_container_width=True):
             st.session_state.cash = float(st.session_state.cash) + amt
+            persist()
             st.rerun()
         if y.button("\u2796 Bargeld verringern", use_container_width=True):
             if amt <= float(st.session_state.cash):
                 st.session_state.cash = float(st.session_state.cash) - amt
+                persist()
                 st.rerun()
             else:
                 st.error("So viel Bargeld hast du nicht.")
@@ -273,9 +358,9 @@ elif page == "\U0001f6d2 Anlegen":
     tab_pkg, tab_single, tab_sell = st.tabs(["\u2460 Fertiges Paket (einfach)", "\u2461 Einzelnen Titel w\u00e4hlen", "\u2462 Etwas verkaufen"])
     with tab_pkg:
         st.subheader("Ein Klick \u2013 fertig gemischt")
-        st.caption("Wir kaufen f\u00fcr dich mehrere Bausteine auf einmal. Du musst nichts einzeln ausw\u00e4hlen.")
+        st.caption("Wir kaufen f\u00fcr dich mehrere Bausteine auf einmal.")
         if cash < 100:
-            st.warning("F\u00fcr ein Paket brauchst du mindestens 100 \u20ac Bargeld. Erh\u00f6he das Spielgeld unter Start.")
+            st.warning("F\u00fcr ein Paket brauchst du mindestens 100 \u20ac Bargeld.")
             euro = 0.0
         else:
             euro = st.number_input(
@@ -302,7 +387,7 @@ elif page == "\U0001f6d2 Anlegen":
                         st.error(msg)
     with tab_single:
         st.subheader("Einen Titel selbst w\u00e4hlen")
-        st.caption("Tipp f\u00fcr Einsteiger: Lieber ein **Paket** (Welt-Aktien) als eine einzelne Firma.")
+        st.caption("Tipp: Lieber ein **Paket** (Welt-Aktien) als eine einzelne Firma.")
         for p in PRODUCTS:
             with st.container(border=True):
                 c1, c2 = st.columns([3, 1])
@@ -319,7 +404,7 @@ elif page == "\U0001f6d2 Anlegen":
             px = get_last_price(ticker)
             pname = PRODUCT_BY_T.get(ticker, {}).get("name") or ALL_UNIVERSE.get(ticker, ticker)
             if px != px or px <= 0:
-                st.error("Kurs gerade nicht da. Bitte sp\u00e4ter nochmal oder anderen Titel w\u00e4hlen.")
+                st.error("Kurs gerade nicht da. Bitte sp\u00e4ter nochmal.")
             else:
                 st.success(f"Ausgew\u00e4hlt: **{pname}** \u00b7 Kurs ca. **{px:,.2f}**")
                 euro = st.number_input(
@@ -338,10 +423,9 @@ elif page == "\U0001f6d2 Anlegen":
                         st.rerun()
                     else:
                         st.error(msg)
-        with st.expander("Andere K\u00fcrzel suchen (f\u00fcr Fortgeschrittene)"):
+        with st.expander("Andere K\u00fcrzel suchen (Fortgeschritten)"):
             t2 = st.selectbox(
-                "Suche",
-                [""] + sorted(ALL_UNIVERSE.keys()),
+                "Suche", [""] + sorted(ALL_UNIVERSE.keys()),
                 format_func=lambda x: f"{x} \u2013 {ALL_UNIVERSE.get(x, '')}" if x else "\u2014",
                 key="adv_ticker",
             )
@@ -351,12 +435,10 @@ elif page == "\U0001f6d2 Anlegen":
     with tab_sell:
         owned = [t for t, h in st.session_state.holdings.items() if float(h.get("qty", 0)) > 0]
         if not owned:
-            st.info("Du besitzt noch nichts. Erst unter \u201eFertiges Paket\u201c oder \u201eEinzelnen Titel\u201c kaufen.")
+            st.info("Du besitzt noch nichts.")
         else:
-            st.write("Was m\u00f6chtest du teilweise oder ganz verkaufen?")
             ticker = st.selectbox(
-                "Deine Anlage",
-                owned,
+                "Deine Anlage", owned,
                 format_func=lambda x: f"{PRODUCT_BY_T.get(x, {}).get('name', ALL_UNIVERSE.get(x, x))} ({st.session_state.holdings[x]['qty']:.4g} St\u00fcck)",
             )
             px = get_last_price(ticker)
@@ -367,7 +449,7 @@ elif page == "\U0001f6d2 Anlegen":
                 st.write(f"Aktueller Kurs: **{px:,.2f}**")
                 step = 0.01 if max_q >= 0.02 else max(max_q / 10, 1e-6)
                 qty = st.slider("Wie viele Anteile verkaufen?", float(step), float(max_q), float(max_q), float(step))
-                st.caption(f"Du bekommst ungef\u00e4hr **{qty * px:,.2f} \u20ac** zur\u00fcck (wird zu Bargeld).")
+                st.caption(f"Du bekommst ungef\u00e4hr **{qty * px:,.2f} \u20ac** zur\u00fcck.")
                 if st.button("\u2713 Verkaufen", type="primary", use_container_width=True):
                     ok, msg = do_sell(ticker, qty, px)
                     if ok:
@@ -380,16 +462,13 @@ elif page == "\U0001f4c9 Wie riskant?":
     st.header("Wie riskant ist dein Depot?")
     weights = holdings_to_weights(st.session_state.holdings, prices)
     if not weights:
-        st.warning("Lege zuerst etwas an. Dann zeigen wir dir hier, wie stark dein Depot schwanken k\u00f6nnte.")
+        st.warning("Lege zuerst etwas an.")
         st.stop()
-    st.markdown(
-        "Wir schauen auf die **letzten Jahre** und rechnen grob aus, "
-        "wie sehr der Wert schwanken k\u00f6nnte. Das ist eine Sch\u00e4tzung, keine Vorhersage."
-    )
+    st.markdown("Sch\u00e4tzung anhand der letzten Jahre \u2013 keine Vorhersage.")
     with st.spinner("Einen Moment \u2026"):
         port_rets, _ = portfolio_returns(weights, "3y")
     if port_rets.empty:
-        st.error("Zu wenig Daten. Bitte sp\u00e4ter erneut versuchen.")
+        st.error("Zu wenig Daten.")
         st.stop()
     ann_ret = port_rets.mean() * 252
     ann_vol = port_rets.std(ddof=1) * np.sqrt(252)
@@ -397,29 +476,25 @@ elif page == "\U0001f4c9 Wie riskant?":
     if ann_vol < 0.12:
         ampel, text = "\U0001f7e2 eher ruhig", "Dein Mix schwankt eher wenig."
     elif ann_vol < 0.22:
-        ampel, text = "\U0001f7e1 mittel", "Normale Schwankungen \u2013 typisch f\u00fcr Aktien-Mischungen."
+        ampel, text = "\U0001f7e1 mittel", "Normale Schwankungen."
     else:
-        ampel, text = "\U0001f534 eher unruhig", "St\u00e4rkere Auf und Abs m\u00f6glich. Das ist nicht automatisch schlecht, aber du solltest Verluste aushalten k\u00f6nnen."
+        ampel, text = "\U0001f534 eher unruhig", "St\u00e4rkere Auf und Abs m\u00f6glich."
     st.subheader(f"Risiko-Ampel: {ampel}")
     st.write(text)
     m1, m2, m3 = st.columns(3)
-    m1.metric("Gesch\u00e4tzte Rendite / Jahr", f"{ann_ret*100:.0f} %",
-              help="Durchschnittliche j\u00e4hrliche Ver\u00e4nderung in der Vergangenheit. Zukunft kann anders sein.")
-    m2.metric("Typische Schwankung / Jahr", f"\u00b1 {ann_vol*100:.0f} %",
-              help="Wie stark der Wert in einem normalen Jahr rauf und runter gehen kann.")
-    m3.metric("Schlechter Tag (Sch\u00e4tzung)", f"\u2212 {hvar*nav:,.0f} \u20ac",
-              help="An ca. 5 von 100 Tagen k\u00f6nnte der Verlust in dieser Gr\u00f6\u00dfenordnung liegen.")
+    m1.metric("Gesch\u00e4tzte Rendite / Jahr", f"{ann_ret*100:.0f} %")
+    m2.metric("Typische Schwankung / Jahr", f"\u00b1 {ann_vol*100:.0f} %")
+    m3.metric("Schlechter Tag (Sch\u00e4tzung)", f"\u2212 {hvar*nav:,.0f} \u20ac")
     eq = (1 + port_rets).cumprod()
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=eq.index, y=eq.values, name="Depot", fill="tozeroy"))
-    fig.update_layout(title="So h\u00e4tte sich dein Mix in der Vergangenheit bewegt (indexiert)", height=300, margin=dict(t=40, b=20))
+    fig.update_layout(title="Wertentwicklung (indexiert)", height=300, margin=dict(t=40, b=20))
     st.plotly_chart(fig, use_container_width=True)
     with st.expander("Was w\u00e4re bei einem B\u00f6rsencrash?"):
-        st.caption("Rein rechnerisch \u2013 kein reales Ereignis.")
         res = stress_test(weights, {"Equity": -0.35, "Equity ETF": -0.33, "Fixed Income": 0.05, "Commodity": -0.15, "Real Estate": -0.30})
         imp = res["portfolio_impact"]
         st.metric("Gesch\u00e4tzter Verlust bei \u221235 % Aktien", f"{imp*100:.0f} %  \u2192  ca. {imp*nav:,.0f} \u20ac")
-    with st.expander("M\u00f6gliche Werte in einem Jahr (Simulation)"):
+    with st.expander("M\u00f6gliche Werte in einem Jahr"):
         mc = monte_carlo_portfolio(port_rets, 2500, 252)
         if not mc.empty:
             p5, p50, p95 = np.percentile(mc["Final Return"], [5, 50, 95])
@@ -427,11 +502,9 @@ elif page == "\U0001f4c9 Wie riskant?":
             a.metric("Ung\u00fcnstiges Jahr", f"{nav*(1+p5):,.0f} \u20ac")
             b.metric("Mittleres Jahr", f"{nav*(1+p50):,.0f} \u20ac")
             c.metric("G\u00fcnstiges Jahr", f"{nav*(1+p95):,.0f} \u20ac")
-            st.caption("Aus vielen Zufallspfaden. Dient nur dem Gef\u00fchl f\u00fcr die Bandbreite.")
 
 elif page == "\U0001f50d Entdecken":
     st.header("M\u00e4rkte ansehen")
-    st.markdown("Hier siehst du Kurse und einfache Kennzahlen. Du musst nichts kaufen.")
     scope = st.radio("Was anschauen?", ["Aktien", "ETFs (Pakete)", "Rohstoffe"], horizontal=True)
     uni = {"Aktien": STOCKS, "ETFs (Pakete)": ETFS, "Rohstoffe": COMMODITIES}[scope]
     limit = st.slider("Wie viele anzeigen?", 10, 40, 20, 5)
@@ -450,9 +523,8 @@ elif page == "\U0001f50d Entdecken":
     if rows:
         df = pd.DataFrame(rows).sort_values("Score", ascending=False)
         nice = df.rename(columns={
-            "Ticker": "K\u00fcrzel", "Anlage": "Name", "Kurs": "Kurs",
-            "1J Rendite %": "1 Jahr %", "Volatilit\u00e4t %": "Schwankung %",
-            "Risiko": "Risiko",
+            "Ticker": "K\u00fcrzel", "Anlage": "Name", "1J Rendite %": "1 Jahr %",
+            "Volatilit\u00e4t %": "Schwankung %",
         })
         st.dataframe(
             nice[["K\u00fcrzel", "Name", "Kurs", "1 Jahr %", "Schwankung %", "Risiko", "Score"]],
@@ -467,29 +539,14 @@ else:
     st.header("Hilfe & Erkl\u00e4rungen")
     st.markdown(
         """
-### In 30 Sekunden
-1. **Start** = dein Konto-\u00dcberblick  
-2. **Anlegen** = kaufen (am einfachsten: fertiges Paket)  
-3. **Wie riskant?** = Schwankungen verstehen  
-4. **Entdecken** = Kurse anschauen ohne zu kaufen  
+### Speichern
+- Links: **Depot herunterladen** speichert alles als Datei auf deinem Ger\u00e4t.
+- **Depot laden**: dieselbe Datei wieder hochladen nach einem Reload.
+- Lokal speichert ATLAS zus\u00e4tzlich automatisch in `atlas_save.json`.
 
-### Wichtige W\u00f6rter
-| Wort | Bedeutung |
-|------|-----------|
-| **Bargeld** | Geld, das noch nicht investiert ist |
-| **Gesamtwert** | Bargeld + aktueller Wert deiner Anlagen |
-| **ETF / Paket** | Ein Korb aus vielen Firmen \u2013 oft einfacher als Einzelaktien |
-| **Kurs** | Aktueller Preis eines Anteils |
-| **Gewinn/Verlust** | Differenz zwischen Kaufpreis und heutigem Wert |
-| **Schwankung** | Wie stark der Wert rauf und runter geht |
-
-### Tipps f\u00fcr absolute Anf\u00e4nger
+### Tipps
 - Starte mit dem Paket **\u201eAusgewogen\u201c**.
-- Lege nicht alles auf **eine** Firma.
-- Verluste in der \u00dcbung sind normal \u2013 so lernst du.
-- Das hier ist **kein** echtes Depot und **keine** Anlageberatung.
-
-### Alles zur\u00fccksetzen
+- Das ist **kein** echtes Depot und **keine** Anlageberatung.
         """
     )
     if st.button("\u00dcbungs-Depot auf 10.000 \u20ac zur\u00fccksetzen", type="primary"):
@@ -497,10 +554,12 @@ else:
         st.session_state.cash = 10000.0
         st.session_state.trades = []
         st.session_state.seen_welcome = False
-        st.success("Zur\u00fcckgesetzt. Du startest wieder bei null.")
+        st.session_state.price_cache = {}
+        persist()
+        st.success("Zur\u00fcckgesetzt.")
         st.rerun()
     with st.expander("Kurz-Report speichern"):
-        lines = [f"ATLAS \u00dcbungs-Report \u2013 {NOW.strftime('%d.%m.%Y %H:%M')}", f"Gesamtwert: {nav:,.2f} \u20ac", f"Bargeld: {cash:,.2f} \u20ac", ""]
+        lines = [f"ATLAS Report \u2013 {NOW.strftime('%d.%m.%Y %H:%M')}", f"Gesamtwert: {nav:,.2f} \u20ac", f"Bargeld: {cash:,.2f} \u20ac", ""]
         if has_positions:
             for _, r in pos_df.iterrows():
                 lines.append(f"{r['Was']}: {r['Wert jetzt \u20ac']:,.2f} \u20ac (G/V {r['Gewinn/Verlust \u20ac']:+,.2f} \u20ac)")
@@ -508,4 +567,4 @@ else:
         st.download_button("Als Textdatei herunterladen", txt, file_name=f"atlas_{NOW.strftime('%Y%m%d')}.txt")
 
 st.divider()
-st.caption("ATLAS \u00dcbungs-Depot \u00b7 Kein echtes Geld \u00b7 Keine Anlageberatung \u00b7 Kurse von Yahoo Finance (verz\u00f6gert) \u00b7 Nur in diesem Browser")
+st.caption("ATLAS \u00dcbungs-Depot \u00b7 Kein echtes Geld \u00b7 Keine Anlageberatung \u00b7 Kurse: Yahoo + lokaler Cache \u00b7 Depot speicherbar")
