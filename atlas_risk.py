@@ -1,11 +1,12 @@
-"""ATLAS data layer and risk engine."""
+"""ATLAS data layer – Kurse über Yahoo Chart-API (ohne yfinance-Abhängigkeit)."""
 from __future__ import annotations
 from typing import Dict, Optional, Tuple
+import json
 import time
+import urllib.request
 import numpy as np
 import pandas as pd
 import streamlit as st
-import yfinance as yf
 
 try:
     from scipy import stats as scipy_stats
@@ -13,6 +14,48 @@ except Exception:
     scipy_stats = None
 
 from atlas_config import ASSET_CLASS, BOND_DURATION, ticker_currency
+
+try:
+    import yfinance as yf
+except Exception:
+    yf = None
+
+_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.0.0 Safari/537.36"
+)
+
+
+def _http_json(url: str, timeout: float = 12.0) -> dict:
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": _UA,
+            "Accept": "application/json,text/plain,*/*",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8", errors="replace"))
+
+
+def _yahoo_chart(ticker: str, range_: str = "5d", interval: str = "1d") -> Optional[dict]:
+    sym = urllib.request.quote(ticker, safe=".=-")
+    url = (
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
+        f"?range={range_}&interval={interval}&includePrePost=false&events=div%2Csplit"
+    )
+    for attempt in range(3):
+        try:
+            data = _http_json(url)
+            results = (data.get("chart") or {}).get("result") or []
+            if results:
+                return results[0]
+        except Exception:
+            pass
+        time.sleep(0.25 * (attempt + 1))
+    return None
 
 
 def _strip_tz(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
@@ -30,34 +73,45 @@ def _strip_tz(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
     return idx
 
 
-def _history_raw(ticker: str, period: str) -> pd.DataFrame:
-    """Fetch with retries; empty DataFrame on failure."""
-    for attempt in range(3):
-        try:
-            df = yf.Ticker(ticker).history(period=period, interval="1d", auto_adjust=True, actions=False)
-            if df is not None and not df.empty and "Close" in df.columns:
-                return df
-        except Exception:
-            pass
-        time.sleep(0.35 * (attempt + 1))
-    return pd.DataFrame()
-
-
 @st.cache_data(ttl=1800, show_spinner=False)
 def _cached_last_price(ticker: str) -> float:
-    """Cached Yahoo price (30 min)."""
-    for period in ("5d", "1mo", "3mo"):
-        df = _history_raw(ticker, period)
-        if df.empty:
+    for range_ in ("5d", "1mo", "3mo"):
+        chart = _yahoo_chart(ticker, range_=range_, interval="1d")
+        if not chart:
             continue
-        s = df["Close"].dropna()
-        if not s.empty:
-            return float(s.iloc[-1])
+        meta = chart.get("meta") or {}
+        px = meta.get("regularMarketPrice")
+        if px is None:
+            px = meta.get("previousClose")
+        if px is not None:
+            try:
+                v = float(px)
+                if v == v and v > 0:
+                    return v
+            except (TypeError, ValueError):
+                pass
+        try:
+            closes = chart["indicators"]["quote"][0]["close"]
+            closes = [c for c in closes if c is not None]
+            if closes:
+                v = float(closes[-1])
+                if v == v and v > 0:
+                    return v
+        except Exception:
+            pass
+    if yf is not None:
+        try:
+            df = yf.Ticker(ticker).history(period="5d", interval="1d", auto_adjust=True, actions=False)
+            if df is not None and not df.empty and "Close" in df.columns:
+                s = df["Close"].dropna()
+                if not s.empty:
+                    return float(s.iloc[-1])
+        except Exception:
+            pass
     return float("nan")
 
 
 def get_last_price(ticker: str) -> float:
-    """Latest price with session fallback if Yahoo fails."""
     if "price_cache" not in st.session_state:
         st.session_state.price_cache = {}
     px = float("nan")
@@ -76,13 +130,40 @@ def get_last_price(ticker: str) -> float:
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def fetch_history(ticker: str, period: str = "5y") -> pd.DataFrame:
+    range_map = {
+        "1mo": "1mo", "3mo": "3mo", "6mo": "6mo",
+        "1y": "1y", "2y": "2y", "5y": "5y", "10y": "10y",
+        "max": "max", "ytd": "ytd",
+    }
+    range_ = range_map.get(period, period if period in range_map.values() else "5y")
+    chart = _yahoo_chart(ticker, range_=range_, interval="1d")
+    if not chart and range_ != "1y":
+        chart = _yahoo_chart(ticker, range_="1y", interval="1d")
+    if not chart:
+        if yf is not None:
+            try:
+                df = yf.Ticker(ticker).history(
+                    period=period if period != "max" else "max",
+                    interval="1d", auto_adjust=True, actions=False,
+                )
+                if df is not None and not df.empty and "Close" in df.columns:
+                    df = df[["Close"]].dropna()
+                    df.index = _strip_tz(df.index)
+                    return df[~df.index.duplicated(keep="last")].sort_index()
+            except Exception:
+                pass
+        return pd.DataFrame()
     try:
-        df = _history_raw(ticker, period)
-        if df.empty and period != "1y":
-            df = _history_raw(ticker, "1y")
-        if df.empty or "Close" not in df.columns:
+        ts = chart.get("timestamp") or []
+        closes = (chart.get("indicators") or {}).get("quote", [{}])[0].get("close") or []
+        rows = []
+        for t, c in zip(ts, closes):
+            if c is None:
+                continue
+            rows.append((pd.to_datetime(t, unit="s"), float(c)))
+        if not rows:
             return pd.DataFrame()
-        df = df[["Close"]].dropna()
+        df = pd.DataFrame(rows, columns=["Date", "Close"]).set_index("Date")
         df.index = _strip_tz(df.index)
         return df[~df.index.duplicated(keep="last")].sort_index()
     except Exception:
@@ -185,14 +266,13 @@ def component_risk(weights: Dict[str, float], rets: pd.DataFrame) -> pd.DataFram
     mcr = (cov @ w) / port_vol
     ccr = w * mcr
     pct = ccr / port_vol * 100
-    out = pd.DataFrame({
+    return pd.DataFrame({
         "Ticker": list(rets.columns),
         "Gewicht %": w * 100,
         "Marginal Risk": mcr,
         "Contribution to Risk": ccr,
         "Risk Contribution %": pct,
     }).sort_values("Risk Contribution %", ascending=False)
-    return out
 
 
 def stress_test(weights: Dict[str, float], shocks: Dict[str, float]) -> dict:
