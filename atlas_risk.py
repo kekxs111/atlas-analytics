@@ -13,6 +13,22 @@ except Exception:
 
 from atlas_config import ASSET_CLASS, BOND_DURATION, ticker_currency
 
+
+def _strip_tz(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
+    idx = pd.to_datetime(index)
+    if getattr(idx, "tz", None) is not None:
+        try:
+            return idx.tz_convert(None)
+        except Exception:
+            try:
+                return idx.tz_localize(None)
+            except Exception:
+                return pd.DatetimeIndex([
+                    pd.Timestamp(x).tz_localize(None) if getattr(x, "tzinfo", None) else x for x in idx
+                ])
+    return idx
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def get_last_price(ticker: str) -> float:
     """Latest close price; NaN if unavailable."""
@@ -20,9 +36,13 @@ def get_last_price(ticker: str) -> float:
         df = yf.Ticker(ticker).history(period="5d", interval="1d", auto_adjust=True, actions=False)
         if df is None or df.empty or "Close" not in df.columns:
             return float("nan")
-        return float(df["Close"].dropna().iloc[-1])
+        s = df["Close"].dropna()
+        if s.empty:
+            return float("nan")
+        return float(s.iloc[-1])
     except Exception:
         return float("nan")
+
 
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_history(ticker: str, period: str = "5y") -> pd.DataFrame:
@@ -31,10 +51,11 @@ def fetch_history(ticker: str, period: str = "5y") -> pd.DataFrame:
         if df is None or df.empty or "Close" not in df.columns:
             return pd.DataFrame()
         df = df[["Close"]].dropna()
-        df.index = pd.to_datetime(df.index).tz_localize(None)
+        df.index = _strip_tz(df.index)
         return df[~df.index.duplicated(keep="last")].sort_index()
     except Exception:
         return pd.DataFrame()
+
 
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_returns_matrix(tickers: Tuple[str, ...], period: str = "3y") -> pd.DataFrame:
@@ -49,6 +70,7 @@ def fetch_returns_matrix(tickers: Tuple[str, ...], period: str = "3y") -> pd.Dat
     min_count = max(1, int(len(frames) * 0.7))
     df = df.dropna(thresh=min_count)
     return df.fillna(0.0)
+
 
 @st.cache_data(ttl=900, show_spinner=False)
 def single_metrics(ticker: str, name: str, kind: str) -> Optional[dict]:
@@ -83,6 +105,7 @@ def single_metrics(ticker: str, name: str, kind: str) -> Optional[dict]:
         "Letztes Datum": p.index[-1].date().isoformat(),
     }
 
+
 def portfolio_returns(weights: Dict[str, float], period: str = "3y") -> Tuple[pd.Series, pd.DataFrame]:
     tickers = tuple(weights.keys())
     rets = fetch_returns_matrix(tickers, period)
@@ -93,6 +116,7 @@ def portfolio_returns(weights: Dict[str, float], period: str = "3y") -> Tuple[pd
     port = (rets * w).sum(axis=1)
     return port, rets
 
+
 def historical_var_cvar(returns: pd.Series, alpha: float = 0.05) -> Tuple[float, float]:
     if returns.empty or len(returns) < 20:
         return np.nan, np.nan
@@ -101,6 +125,7 @@ def historical_var_cvar(returns: pd.Series, alpha: float = 0.05) -> Tuple[float,
     var = -sorted_r[idx]
     cvar = -sorted_r[: idx + 1].mean() if idx >= 0 else var
     return float(var), float(cvar)
+
 
 def parametric_var(returns: pd.Series, alpha: float = 0.05) -> float:
     if returns.empty or returns.std() == 0:
@@ -111,6 +136,7 @@ def parametric_var(returns: pd.Series, alpha: float = 0.05) -> float:
     else:
         z = -1.64485 if alpha == 0.05 else -2.326 if alpha == 0.01 else -1.2816
     return float(-(mu + z * sigma))
+
 
 def component_risk(weights: Dict[str, float], rets: pd.DataFrame) -> pd.DataFrame:
     if rets.empty or len(rets.columns) < 2:
@@ -134,6 +160,7 @@ def component_risk(weights: Dict[str, float], rets: pd.DataFrame) -> pd.DataFram
     }).sort_values("Risk Contribution %", ascending=False)
     return out
 
+
 def stress_test(weights: Dict[str, float], shocks: Dict[str, float]) -> dict:
     impact = 0.0
     details = []
@@ -147,6 +174,7 @@ def stress_test(weights: Dict[str, float], shocks: Dict[str, float]) -> dict:
         details.append({"Ticker": t, "Gewicht": w, "Shock %": shock * 100, "Beitrag %": pnl * 100})
     return {"portfolio_impact": impact, "details": pd.DataFrame(details)}
 
+
 def monte_carlo_portfolio(returns: pd.Series, n_sims: int = 5000, horizon_days: int = 252) -> pd.DataFrame:
     if returns.empty or len(returns) < 30:
         return pd.DataFrame()
@@ -157,6 +185,7 @@ def monte_carlo_portfolio(returns: pd.Series, n_sims: int = 5000, horizon_days: 
     paths = np.cumprod(1 + shocks, axis=1)
     final = paths[:, -1] - 1
     return pd.DataFrame({"Final Return": final, "Path": range(n_sims)})
+
 
 def fixed_income_impact(weights: Dict[str, float], rate_shock_bp: float = 100) -> dict:
     total_impact = 0.0
@@ -173,6 +202,7 @@ def fixed_income_impact(weights: Dict[str, float], rate_shock_bp: float = 100) -
             "Rate Shock (bp)": rate_shock_bp, "Impact %": impact * 100,
         })
     return {"total_impact": total_impact, "details": pd.DataFrame(rows)}
+
 
 def holdings_to_weights(holdings: dict, prices: dict) -> Dict[str, float]:
     """Convert qty holdings + prices to portfolio weights."""
