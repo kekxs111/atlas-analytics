@@ -1,6 +1,7 @@
 """ATLAS data layer and risk engine."""
 from __future__ import annotations
 from typing import Dict, Optional, Tuple
+import time
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -24,31 +25,62 @@ def _strip_tz(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
                 return idx.tz_localize(None)
             except Exception:
                 return pd.DatetimeIndex([
-                    pd.Timestamp(x).tz_localize(None) if getattr(x, "tzinfo", None) else x for x in idx
+                    pd.Timestamp(x).replace(tzinfo=None) if getattr(x, "tzinfo", None) else x for x in idx
                 ])
     return idx
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def get_last_price(ticker: str) -> float:
-    """Latest close price; NaN if unavailable."""
-    try:
-        df = yf.Ticker(ticker).history(period="5d", interval="1d", auto_adjust=True, actions=False)
-        if df is None or df.empty or "Close" not in df.columns:
-            return float("nan")
+def _history_raw(ticker: str, period: str) -> pd.DataFrame:
+    """Fetch with retries; empty DataFrame on failure."""
+    for attempt in range(3):
+        try:
+            df = yf.Ticker(ticker).history(period=period, interval="1d", auto_adjust=True, actions=False)
+            if df is not None and not df.empty and "Close" in df.columns:
+                return df
+        except Exception:
+            pass
+        time.sleep(0.35 * (attempt + 1))
+    return pd.DataFrame()
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _cached_last_price(ticker: str) -> float:
+    """Cached Yahoo price (30 min)."""
+    for period in ("5d", "1mo", "3mo"):
+        df = _history_raw(ticker, period)
+        if df.empty:
+            continue
         s = df["Close"].dropna()
-        if s.empty:
-            return float("nan")
-        return float(s.iloc[-1])
+        if not s.empty:
+            return float(s.iloc[-1])
+    return float("nan")
+
+
+def get_last_price(ticker: str) -> float:
+    """Latest price with session fallback if Yahoo fails."""
+    if "price_cache" not in st.session_state:
+        st.session_state.price_cache = {}
+    px = float("nan")
+    try:
+        px = float(_cached_last_price(ticker))
     except Exception:
-        return float("nan")
+        px = float("nan")
+    if px == px and px > 0:
+        st.session_state.price_cache[ticker] = px
+        return px
+    fallback = st.session_state.price_cache.get(ticker)
+    if fallback is not None and fallback == fallback and fallback > 0:
+        return float(fallback)
+    return float("nan")
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def fetch_history(ticker: str, period: str = "5y") -> pd.DataFrame:
     try:
-        df = yf.Ticker(ticker).history(period=period, interval="1d", auto_adjust=True, actions=False)
-        if df is None or df.empty or "Close" not in df.columns:
+        df = _history_raw(ticker, period)
+        if df.empty and period != "1y":
+            df = _history_raw(ticker, "1y")
+        if df.empty or "Close" not in df.columns:
             return pd.DataFrame()
         df = df[["Close"]].dropna()
         df.index = _strip_tz(df.index)
@@ -57,7 +89,7 @@ def fetch_history(ticker: str, period: str = "5y") -> pd.DataFrame:
         return pd.DataFrame()
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def fetch_returns_matrix(tickers: Tuple[str, ...], period: str = "3y") -> pd.DataFrame:
     frames = {}
     for t in tickers:
@@ -72,9 +104,11 @@ def fetch_returns_matrix(tickers: Tuple[str, ...], period: str = "3y") -> pd.Dat
     return df.fillna(0.0)
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def single_metrics(ticker: str, name: str, kind: str) -> Optional[dict]:
     d = fetch_history(ticker, "max")
+    if d.empty or len(d) < 10:
+        d = fetch_history(ticker, "5y")
     if d.empty or len(d) < 10:
         return None
     p = d["Close"].astype(float)
@@ -205,7 +239,6 @@ def fixed_income_impact(weights: Dict[str, float], rate_shock_bp: float = 100) -
 
 
 def holdings_to_weights(holdings: dict, prices: dict) -> Dict[str, float]:
-    """Convert qty holdings + prices to portfolio weights."""
     values = {}
     for t, h in holdings.items():
         qty = float(h.get("qty", 0) or 0)
