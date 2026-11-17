@@ -1,9 +1,10 @@
-"""ATLAS data layer – Kurse über Yahoo Chart-API (ohne yfinance-Abhängigkeit)."""
+"""ATLAS data layer – Yahoo Chart-API + Batch-Preise."""
 from __future__ import annotations
-from typing import Dict, Optional, Tuple
+from typing import Dict, Iterable, Optional, Tuple
 import json
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -54,8 +55,33 @@ def _yahoo_chart(ticker: str, range_: str = "5d", interval: str = "1d") -> Optio
                 return results[0]
         except Exception:
             pass
-        time.sleep(0.25 * (attempt + 1))
+        time.sleep(0.2 * (attempt + 1))
     return None
+
+
+def _price_from_chart(chart: dict) -> float:
+    if not chart:
+        return float("nan")
+    meta = chart.get("meta") or {}
+    for key in ("regularMarketPrice", "previousClose"):
+        px = meta.get(key)
+        if px is not None:
+            try:
+                v = float(px)
+                if v == v and v > 0:
+                    return v
+            except (TypeError, ValueError):
+                pass
+    try:
+        closes = chart["indicators"]["quote"][0]["close"]
+        closes = [c for c in closes if c is not None]
+        if closes:
+            v = float(closes[-1])
+            if v == v and v > 0:
+                return v
+    except Exception:
+        pass
+    return float("nan")
 
 
 def _strip_tz(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
@@ -77,28 +103,9 @@ def _strip_tz(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
 def _cached_last_price(ticker: str) -> float:
     for range_ in ("5d", "1mo", "3mo"):
         chart = _yahoo_chart(ticker, range_=range_, interval="1d")
-        if not chart:
-            continue
-        meta = chart.get("meta") or {}
-        px = meta.get("regularMarketPrice")
-        if px is None:
-            px = meta.get("previousClose")
-        if px is not None:
-            try:
-                v = float(px)
-                if v == v and v > 0:
-                    return v
-            except (TypeError, ValueError):
-                pass
-        try:
-            closes = chart["indicators"]["quote"][0]["close"]
-            closes = [c for c in closes if c is not None]
-            if closes:
-                v = float(closes[-1])
-                if v == v and v > 0:
-                    return v
-        except Exception:
-            pass
+        px = _price_from_chart(chart) if chart else float("nan")
+        if px == px and px > 0:
+            return px
     if yf is not None:
         try:
             df = yf.Ticker(ticker).history(period="5d", interval="1d", auto_adjust=True, actions=False)
@@ -126,6 +133,35 @@ def get_last_price(ticker: str) -> float:
     if fallback is not None and fallback == fallback and fallback > 0:
         return float(fallback)
     return float("nan")
+
+
+def prefetch_prices(tickers: Iterable[str], max_workers: int = 6) -> Dict[str, float]:
+    """Mehrere Kurse parallel laden und in Session-Cache schreiben."""
+    if "price_cache" not in st.session_state:
+        st.session_state.price_cache = {}
+    uniq = [t for t in dict.fromkeys(tickers) if t]
+    out: Dict[str, float] = {}
+
+    def _one(t: str) -> Tuple[str, float]:
+        try:
+            return t, float(_cached_last_price(t))
+        except Exception:
+            return t, float("nan")
+
+    if not uniq:
+        return out
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(uniq))) as pool:
+        futs = {pool.submit(_one, t): t for t in uniq}
+        for fut in as_completed(futs):
+            t, px = fut.result()
+            if px == px and px > 0:
+                st.session_state.price_cache[t] = px
+                out[t] = px
+            else:
+                fb = st.session_state.price_cache.get(t)
+                if fb is not None and fb == fb and fb > 0:
+                    out[t] = float(fb)
+    return out
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
